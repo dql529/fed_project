@@ -27,17 +27,41 @@ class LSTMModel(nn.Module):
 
 
 
-# Define the edges and nodes of the hypergraph
-edges = torch.tensor([[0, 1], [1, 2], [2, 0]], dtype=torch.long)
-nodes = torch.tensor([[-1], [0], [1]], dtype=torch.float)
+# Define the adjacency matrix for the feature computational dependencies
+adjacency_matrix = torch.tensor([
+    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+], dtype=torch.float)
+
+# Convert the adjacency matrix to edge index format
+edges = adjacency_matrix.nonzero(as_tuple=False).t()
+
+# Define some dummy node features
+nodes = torch.randn((18, 5))  # 18 nodes, 5 features per node
 
 # Create a PyTorch Geometric data object
 data = Data(x=nodes, edge_index=edges)
 
 # Define a simple GNN with GCN layers
-class Net(torch.nn.Module):
+class Net18(torch.nn.Module):
     def __init__(self):
-        super(Net, self).__init__()
+        super(Net18, self).__init__()
         self.conv1 = GCNConv(data.num_node_features, 16)
         self.conv2 = GCNConv(16, data.num_classes)
 
@@ -51,8 +75,15 @@ class Net(torch.nn.Module):
 
         return torch.nn.functional.log_softmax(x, dim=1)
 
+
+
+
+
+
+
+
 # Initialize and train the GNN (this is just a placeholder example, in practice you would use a proper training loop)
-model = Net()
+model = Net18()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
 for epoch in range(100):
