@@ -15,9 +15,12 @@ from sklearn.model_selection import train_test_split
 
 df = pd.read_csv('C:\\Users\\ROG\\Desktop\\UAV_Project\\data456.csv', sep=' ')
 # 按9：1 划分训练，测试集
-train_df, test_df = train_test_split(df, test_size=0.1, random_state=0)
-features = test_df.iloc[:,:18]
-labels = test_df.iloc[:,18]
+train_df, test_df = train_test_split(df, test_size=0.3, random_state=0)
+# 写入train_df文件
+train_df.to_csv('train.csv', sep = ' ',index=False)  # index=False表示不将索引写入文件中
+# 写入test_df文件
+test_df.to_csv('test.csv', sep = ' ',index=False)  # index=False表示不将索引写入文件中
+
 
 
 

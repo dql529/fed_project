@@ -3,8 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.data import Data
-from Dataset import features, labels, test_df
+import pandas as pd
+df_train = pd.read_csv('C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset\\train.csv', sep=' ')
+df_test = pd.read_csv('C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset\\test.csv', sep=' ')
 
+train_features = df_train.iloc[:,:18]
+train_labels = df_train.iloc[:,18]
+test_features = df_test.iloc[:,:18]
+test_labels = df_test.iloc[:,18]
+
+# local_data = torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32)
+# local_targets = torch.tensor(train_labels.values.reshape(-1,1), dtype=torch.float32)
 
 
 # Define the adjacency matrix for the feature computational dependencies
@@ -30,15 +39,10 @@ adjacency_matrix = torch.tensor([
 ], dtype=torch.float)
 # Convert the adjacency matrix to edge index format
 edges = adjacency_matrix.nonzero(as_tuple=False).t()
+data = Data(x=torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32), edge_index=edges, y=torch.tensor(train_labels.values.reshape(-1,1), dtype=torch.float32))
+data_test = Data(x=torch.tensor(test_features.values.reshape(-1, 18), dtype=torch.float32), edge_index=edges, y=torch.tensor(test_labels.values.reshape(-1,1), dtype=torch.float32))
+#data_test = Data(x=torch.tensor(test_features.values.reshape(-1, 18), dtype=torch.float32), edge_index=edges, y=torch.tensor(test_labels.values.reshape(-1,1), dtype=torch.float32))
 
-#features reshape into 2 dim
-local_data = torch.tensor(features.values.reshape(-1, 18), dtype=torch.float32)
-
-local_targets = torch.tensor(labels.values, dtype=torch.float32)
-#将他改成2维
-local_targets = local_targets.reshape(-1,1)
-
-data = Data(x=local_data, edge_index=edges, y=local_targets)
 # Define a simple GNN with GCN layers
 class Net18(torch.nn.Module):
     def __init__(self):
@@ -54,7 +58,7 @@ class Net18(torch.nn.Module):
         x = torch.nn.functional.dropout(x, training=self.training)
         x = self.conv2(x, edge_index)
 
-        return torch.nn.functional.log_softmax(x, dim=1)
+        return x
 
-
+print(train_features)
 
