@@ -13,11 +13,11 @@ from sklearn.model_selection import train_test_split
 # #df1 = pd.DataFrame(data_transposed1)
 
 
-df = pd.read_csv('C:\\Users\\ROG\\Desktop\\UAV_Project\\data1.csv', sep=' ')
+df = pd.read_csv('C:\\Users\\ROG\\Desktop\\UAV_Project\\data456.csv', sep=' ')
 # 按9：1 划分训练，测试集
 train_df, test_df = train_test_split(df, test_size=0.1, random_state=0)
-features = test_df.iloc[:,:54]
-labels = test_df.iloc[:,54]
+features = test_df.iloc[:,:18]
+labels = test_df.iloc[:,18]
 
 
 

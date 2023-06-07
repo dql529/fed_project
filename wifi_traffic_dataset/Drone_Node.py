@@ -3,22 +3,23 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from Model import LSTMModel
+from Model import  Net18, edges
 import pickle
-from data_loader import load_dataset, load_local_dataset
+from data_loader import load_dataset, load_local_dataset,load_local_dataset2
 import base64
 from flask import Flask, request, jsonify
 from multiprocessing import *
 from Dataset import features, labels
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import sys
 import time
+from Model import Net18,data
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 class DroneNode:
     def __init__(self):
         self.port = 5002
         self.central_server_ip = "localhost:5000"
-        self.drone_id = 2
+        self.drone_id = 1
         self.local_data = None
         self.local_model = None
         self.performance = None
@@ -26,14 +27,10 @@ class DroneNode:
 这样，每个无人机节点都可以在本地训练自己的模型副本，并在训练完成后将其上传给中心服务器。
 中心服务器可以聚合这些本地模型，从而更新全局模型.'''
     def receive_global_model(self, global_model):
-        # 克隆全局模型的权重
+       
         self.global_model = global_model
-        self.local_model = LSTMModel(global_model.input_size, 
-                                      global_model.hidden_size, 
-                                      global_model.num_layers, 
-                                      global_model.output_size)
+        self.local_model = Net18()
         self.local_model.load_state_dict(global_model.state_dict())
-
    
 
     def train_local_model(self, num_epochs=10, batch_size=64, learning_rate=0.001):
@@ -42,7 +39,8 @@ class DroneNode:
             return
 
         self.local_model.to(device)
-        local_loader = load_local_dataset()
+        data_device  = data.to(device)
+        
 
         # 定义损失函数和优化器
         num_epochs = 3
@@ -55,24 +53,21 @@ class DroneNode:
             print(f"Using device: {device}, GPU name: {torch.cuda.get_device_name(device.index)}")
         else:
             print(f"Using device: {device}")
+
+            
         # 训练循环
         for epoch in range(num_epochs):
-            for data, targets in local_loader:
-                # 将数据移动到GPU上
-                data, targets = data.to(device), targets.to(device)
-                 # 初始化隐藏状态并将其移至GPU
-                h0 = torch.zeros(self.local_model.num_layers, data.size(0), self.local_model.hidden_size).to(device)
-                c0 = torch.zeros(self.local_model.num_layers, data.size(0), self.local_model.hidden_size).to(device)
-                # 前向传播
-                outputs = self.local_model(data)
-                targets = targets.unsqueeze(1)
-                loss = criterion(outputs, targets)
+            # 前向传播
+            outputs = self.local_model(data_device)
 
-                # 反向传播和优化
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+            # 计算损失
+            loss = criterion(outputs, data_device .y)
 
+            # 反向传播和优化
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            # 每1个迭代输出一次损失
             print(f"Drone {self.drone_id} - Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item()}")
         print("Drone {}: Local model training complete.".format(self.drone_id))
         

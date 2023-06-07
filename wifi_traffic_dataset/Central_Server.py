@@ -1,15 +1,14 @@
 import numpy as np
 from flask import Flask, request, jsonify
-from Model import LSTMModel
+from Model import Net18,data
 import torch
 import torch.nn as nn
-from data_loader import load_dataset
 import pickle
 import base64
 import requests
 import time
 import multiprocessing
-    
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 class CentralServer:
     def __init__(self):
         self.global_model = None
@@ -18,36 +17,41 @@ class CentralServer:
         self.aggregation_method = "asynchronous"
  
     def initialize_global_model(self):
-        # LSTM模型的参数
-        # 9个特征
-        input_size = 1
-        hidden_size = 64
-        num_layers = 2
-        output_size = 1  # 根据您的分类任务设置
 
-        # 创建一个LSTM模型实例
-        model = LSTMModel(input_size, hidden_size, num_layers, output_size)
-
-        pretrain_loader = load_dataset()
+       
+        # 创建一个模型实例
+        model = Net18().to(device)
+        data_device  = data.to(device)
+        
         # 训练参数
-        num_epochs = 10
+        # 定义损失函数和优化器
+        num_epochs = 3
         learning_rate = 0.001
-        #criterion = nn.CrossEntropyLoss()
-        criterion = nn.BCEWithLogitsLoss()#更适合二元分类
+        criterion = nn.BCEWithLogitsLoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+
+        if device.type == 'cuda':
+            print(f"Using device: {device}, GPU name: {torch.cuda.get_device_name(device.index)}")
+        else:
+            print(f"Using device: {device}")
+
 
         # 训练循环
         for epoch in range(num_epochs):
-            for data, targets in pretrain_loader:
-                # 前向传播
-                outputs = model(data)
-                targets = targets.unsqueeze(1)
-                loss = criterion(outputs, targets)
+            # 前向传播
+            outputs = model(data_device )
 
-                # 反向传播和优化
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+
+
+
+            # 计算损失
+            loss = criterion(outputs, data_device .y)
+
+            # 反向传播和优化
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
         self.global_model = model
 

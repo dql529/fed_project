@@ -3,27 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.data import Data
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, output_size):
-        super(LSTMModel, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.output_size =output_size
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
-
-    def forward(self, x):
-        device = x.device  # 获取输入数据的设备
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)  # 将隐藏状态移至相同的设备
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)  # 将隐藏状态移至相同的设备
-
-        out, _ = self.lstm(x, (h0, c0))
-        out = self.fc(out[:, -1, :])
-        return out
-
+from Dataset import features, labels, test_df
 
 
 
@@ -48,22 +28,23 @@ adjacency_matrix = torch.tensor([
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
 ], dtype=torch.float)
-
 # Convert the adjacency matrix to edge index format
 edges = adjacency_matrix.nonzero(as_tuple=False).t()
 
-# Define some dummy node features
-nodes = torch.randn((18, 5))  # 18 nodes, 5 features per node
+#features reshape into 2 dim
+local_data = torch.tensor(features.values.reshape(-1, 18), dtype=torch.float32)
 
-# Create a PyTorch Geometric data object
-data = Data(x=nodes, edge_index=edges)
+local_targets = torch.tensor(labels.values, dtype=torch.float32)
+#将他改成2维
+local_targets = local_targets.reshape(-1,1)
 
+data = Data(x=local_data, edge_index=edges, y=local_targets)
 # Define a simple GNN with GCN layers
 class Net18(torch.nn.Module):
     def __init__(self):
         super(Net18, self).__init__()
         self.conv1 = GCNConv(data.num_node_features, 16)
-        self.conv2 = GCNConv(16, data.num_classes)
+        self.conv2 = GCNConv(16, 1) #Binary classification
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -77,18 +58,3 @@ class Net18(torch.nn.Module):
 
 
 
-
-
-
-
-
-# Initialize and train the GNN (this is just a placeholder example, in practice you would use a proper training loop)
-model = Net18()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-
-for epoch in range(100):
-    optimizer.zero_grad()
-    out = model(data)
-    loss = torch.nn.functional.nll_loss(out, data.y)
-    loss.backward()
-    optimizer.step()
