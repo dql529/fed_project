@@ -4,8 +4,8 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.data import Data
 import pandas as pd
-df_train = pd.read_csv('C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset\\train.csv', sep=' ')
-df_test = pd.read_csv('C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset\\test.csv', sep=' ')
+df_train = pd.read_csv('./train.csv', sep=' ')
+df_test = pd.read_csv('./test.csv', sep=' ')
 
 train_features = df_train.iloc[:,:18]
 train_labels = df_train.iloc[:,18]

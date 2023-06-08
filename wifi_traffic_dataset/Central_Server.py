@@ -134,6 +134,21 @@ class CentralServer:
             print("发送全局模型-成功！--->"+ip)
             return jsonify({'status': 'success'})
         
+        @app.route('/getModelString', methods=['GET'])
+        def getModelString():
+            try:
+                with open("global_model.pkl", "rb") as file:
+                    global_model = pickle.load(file)
+            except Exception as e:
+                print("本地不存在全局模型，训练中……")
+                self.initialize_global_model()
+                with open("global_model.pkl", "rb") as file:
+                    global_model = pickle.load(file)
+            # 序列化模型
+            global_model_serialized = pickle.dumps(global_model)
+            global_model_serialized_base64 = base64.b64encode(global_model_serialized).decode()
+            return jsonify({'model': global_model_serialized_base64})
+        
         @app.route('/upload_model', methods=['POST'])
         def upload_model():
             drone_id = request.form['drone_id']
