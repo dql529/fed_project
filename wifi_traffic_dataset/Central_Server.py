@@ -94,7 +94,7 @@ class CentralServer:
         
         self.global_model = aggregated_model
 
-        # 保存全局模型到文件
+        # 保存全局模型到文件, 以便下次使用
         with open("global_model.pkl", "wb") as file:
             pickle.dump(self.global_model, file)
 
@@ -134,6 +134,8 @@ class CentralServer:
             print("发送全局模型-成功！--->"+ip)
             return jsonify({'status': 'success'})
         
+
+        #序列模型模型
         @app.route('/getModelString', methods=['GET'])
         def getModelString():
             try:

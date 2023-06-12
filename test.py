@@ -1,20 +1,82 @@
-from torch_geometric.datasets import KarateClub
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
 
-dataset = KarateClub()
-data = dataset[0]  # Get the first graph object.
-print(data)
-print('==============================================================')
+# 定义模型
+class SimpleNet(nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(SimpleNet, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size) 
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_size, num_classes)  
+    
+    def forward(self, x):
+        out = self.fc1(x)
+        out = self.relu(out)
+        out = self.fc2(out)
+        return out
 
-# 获取图的一些信息
-print(f'Number of nodes: {data.num_nodes}') # 节点数量
-print(f'Number of edges: {data.num_edges}') # 边数量
-print(f'Number of node features: {data.num_node_features}') # 节点属性的维度
-print(f'Number of node features: {data.num_features}') # 同样是节点属性的维度
-print(f'Number of edge features: {data.num_edge_features}') # 边属性的维度
-print(f'Average node degree: {data.num_edges / data.num_nodes:.2f}') # 平均节点度
-print(f'if edge indices are ordered and do not contain duplicate entries.: {data.is_coalesced()}') # 是否边是有序的同时不含有重复的边
-print(f'Number of training nodes: {data.train_mask.sum()}') # 用作训练集的节点
-print(f'Training node label rate: {int(data.train_mask.sum()) / data.num_nodes:.2f}') # 用作训练集的节点的数量
-print(f'Contains isolated nodes: {data.has_isolated_nodes()}') # 此图是否包含孤立的节点
-print(f'Contains self-loops: {data.has_self_loops()}')  # 此图是否包含自环的边
-print(f'Is undirected: {data.is_undirected()}')  # 此图是否是无向图
+# 设定参数
+input_size = 784
+hidden_size = 500
+num_classes = 10
+num_epochs = 5
+batch_size = 100
+learning_rate = 0.001
+
+# 加载数据
+train_dataset = datasets.MNIST(root='./data', 
+                            train=True, 
+                            transform=transforms.ToTensor(),  
+                            download=True)
+
+test_dataset = datasets.MNIST(root='./data', 
+                           train=False, 
+                           transform=transforms.ToTensor())
+
+train_loader = torch.utils.data.DataLoader(dataset=train_dataset, 
+                                           batch_size=batch_size, 
+                                           shuffle=True)
+
+test_loader = torch.utils.data.DataLoader(dataset=test_dataset, 
+                                          batch_size=batch_size, 
+                                          shuffle=False)
+
+# 创建模型
+model = SimpleNet(input_size, hidden_size, num_classes)
+
+# 定义损失函数和优化器
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+# 训练模型
+for epoch in range(num_epochs):
+    for i, (images, labels) in enumerate(train_loader):
+        images = images.reshape(-1, 28*28)
+        
+        # 前向传播
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        
+        # 反向传播和优化
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+        if (i+1) % 100 == 0:
+            print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}' 
+                   .format(epoch+1, num_epochs, i+1, len(train_loader), loss.item()))
+
+# 测试模型
+with torch.no_grad():
+    correct = 0
+    total = 0
+    for images, labels in test_loader:
+        images = images.reshape(-1, 28*28)
+        outputs = model(images)
+        _, predicted = torch.max(outputs.data, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+
+    print('Accuracy of the network on the 10000 test images: {} %'.format(100 * correct / total))

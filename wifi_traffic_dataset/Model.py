@@ -45,10 +45,11 @@ data_test = Data(x=torch.tensor(test_features.values.reshape(-1, 18), dtype=torc
 
 # Define a simple GNN with GCN layers
 class Net18(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, num_output_features):
         super(Net18, self).__init__()
         self.conv1 = GCNConv(data.num_node_features, 16)
-        self.conv2 = GCNConv(16, 1) #Binary classification
+        self.conv2 = GCNConv(16, num_output_features) # Binary classification
+        self.num_output_features = num_output_features
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -60,5 +61,26 @@ class Net18(torch.nn.Module):
 
         return x
 
-print(train_features)
+
+class Net18_3(torch.nn.Module):
+    def __init__(self):
+        super(Net18_3, self).__init__()
+        self.conv1 = GCNConv(data.num_node_features, 16)
+        self.conv2 = GCNConv(16, 16)
+        self.conv3 = GCNConv(16, 1) #Binary classification
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+
+        x = self.conv1(x, edge_index)
+        x = torch.nn.functional.relu(x)
+        x = torch.nn.functional.dropout(x, training=self.training)
+        
+        x = self.conv2(x, edge_index)
+        x = torch.nn.functional.relu(x)
+        x = torch.nn.functional.dropout(x, training=self.training)
+
+        x = self.conv3(x, edge_index)
+
+        return x
 
