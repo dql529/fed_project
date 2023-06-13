@@ -1,6 +1,6 @@
 import numpy as np
 from flask import Flask, request, jsonify
-from Model import Net18,data,data_test,Net18_3
+from Model import Net18, data, data_test, Net18_3
 import torch
 import torch.nn as nn
 import pickle
@@ -9,28 +9,22 @@ import requests
 import time
 import multiprocessing
 from time import sleep
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(0)
-#定义输出维度
+# 定义输出维度
 num_output_features = 2
-num_epochs = 10
-learning_rate = 0.002
+num_epochs = 1000
+learning_rate = 0.02
 model = Net18(num_output_features).to(device)
 
-#三层卷积层
-#model = Net18_3().to(device)
-data_device  = data.to(device)
-data_test_device = data_test.to(device)  
+# 三层卷积层
+# model = Net18_3().to(device)
+data_device = data.to(device)
+data_test_device = data_test.to(device)
 # 训练参数
 # 定义损失函数和优化器
-#维度， epcos learning rate , accuracy
-#2 2000 0.001, 96.42% at epoch 683
-#2 2000 0.002  97.78% at epoch 1994
-#2 1000 0.002  
-#learning rate 0.002 and dimension 2,Maximum accuracy of 95.61% at epoch 991
-#1 2000 0.001, 92.91% at epoch 1996
-
-
 
 
 if model.num_output_features == 1:
@@ -38,17 +32,19 @@ if model.num_output_features == 1:
 elif model.num_output_features == 2:
     criterion = nn.CrossEntropyLoss()
 else:
-    raise ValueError("Invalid number of output features: {}".format(model.num_output_features))
+    raise ValueError(
+        "Invalid number of output features: {}".format(model.num_output_features)
+    )
 
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 
-if device.type == 'cuda':
-    print(f"Using device: {device}, GPU name: {torch.cuda.get_device_name(device.index)}")
+if device.type == "cuda":
+    print(
+        f"Using device: {device}, GPU name: {torch.cuda.get_device_name(device.index)}"
+    )
 else:
     print(f"Using device: {device}")
-
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 
 def compute_loss(outputs, labels):
@@ -57,8 +53,11 @@ def compute_loss(outputs, labels):
     elif model.num_output_features == 2:
         return criterion(outputs, labels.squeeze().long())
     else:
-        raise ValueError("Invalid number of output features: {}".format(model.num_output_features))
-    
+        raise ValueError(
+            "Invalid number of output features: {}".format(model.num_output_features)
+        )
+
+
 # Convert the model's output probabilities to binary predictions
 def to_predictions(outputs):
     if model.num_output_features == 1:
@@ -66,8 +65,11 @@ def to_predictions(outputs):
     elif model.num_output_features == 2:
         return outputs.argmax(dim=1)
     else:
-        raise ValueError("Invalid number of output features: {}".format(model.num_output_features))
-    
+        raise ValueError(
+            "Invalid number of output features: {}".format(model.num_output_features)
+        )
+
+
 # Evaluate the model on the test data
 def evaluate(data_test_device):
     model.eval()  # Set the model to evaluation mode
@@ -76,16 +78,14 @@ def evaluate(data_test_device):
 
         predictions_test = to_predictions(outputs_test)
 
-        
         # Calculate metrics
         accuracy = accuracy_score(data_test_device.y.cpu(), predictions_test.cpu())
         precision = precision_score(data_test_device.y.cpu(), predictions_test.cpu())
         recall = recall_score(data_test_device.y.cpu(), predictions_test.cpu())
         f1 = f1_score(data_test_device.y.cpu(), predictions_test.cpu())
         return accuracy, precision, recall, f1
-    
 
-    
+
 # Train the model and evaluate at the end of each epoch
 import matplotlib.pyplot as plt
 
@@ -103,27 +103,36 @@ for epoch in range(num_epochs):
     # Evaluate
     accuracy, precision, recall, f1 = evaluate(data_test_device)
     accuracies.append(accuracy)
-    print(f'Epoch {epoch+1}/{num_epochs}:')
-    print(f'Loss: {loss.item()}')
-    print(f'Accuracy: {accuracy}')
-    print(f'Precision: {precision}')
-    print(f'Recall: {recall}')
-    print(f'F1 Score: {f1}')
+    print(f"Epoch {epoch+1}/{num_epochs}:")
+    print(f"Loss: {loss.item()}")
+    print(f"Accuracy: {accuracy}")
+    print(f"Precision: {precision}")
+    print(f"Recall: {recall}")
+    print(f"F1 Score: {f1}")
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
+
 # 定义一个函数，将y轴刻度转换为百分比格式，保留两位小数
 def to_percent(y, position):
-    return f'{100*y:.2f}%'
+    return f"{100*y:.2f}%"
+
 
 formatter = FuncFormatter(to_percent)
 
 plt.figure(figsize=(10, 6))  # Set the figure size
-plt.plot(range(1, num_epochs + 1), accuracies, marker='o', linestyle='-', color='b', label='Accuracy')  # Plot accuracy
-plt.xlabel('Epoch', fontsize=14)  # Set the label for the x-axis
-plt.ylabel('Accuracy', fontsize=14)  # Set the label for the y-axis
-plt.title('Accuracy vs. Epoch', fontsize=16)  # Set the title
+plt.plot(
+    range(1, num_epochs + 1),
+    accuracies,
+    marker="o",
+    linestyle="-",
+    color="b",
+    label="Accuracy",
+)  # Plot accuracy
+plt.xlabel("Epoch", fontsize=14)  # Set the label for the x-axis
+plt.ylabel("Accuracy", fontsize=14)  # Set the label for the y-axis
+plt.title("Accuracy vs. Epoch", fontsize=16)  # Set the title
 plt.grid(True)  # Add grid lines
 plt.legend(fontsize=12)  # Add a legend
 plt.xticks(fontsize=12)  # Set the size of the x-axis ticks
@@ -137,26 +146,25 @@ max_accuracy = max(accuracies)
 max_epoch = accuracies.index(max_accuracy) + 1
 
 # Print the coordinates of the maximum point
-print(f'learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}')
-
-
+print(
+    f"learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
+)
 
 
 # Annotate the maximum point
-plt.annotate(f'Max Accuracy: {100*max_accuracy:.2f}%', 
-             xy=(max_epoch, max_accuracy), 
-             xytext=(max_epoch+5, max_accuracy-0.1), 
-             arrowprops=dict(facecolor='red', shrink=0.05))
+plt.annotate(
+    f"Max Accuracy: {100*max_accuracy:.2f}%",
+    xy=(max_epoch, max_accuracy),
+    xytext=(max_epoch + 5, max_accuracy - 0.1),
+    arrowprops=dict(facecolor="red", shrink=0.05),
+)
 
 plt.show()
 
 
-
 import os
+
 # 按照学习率，维度，epoch给模型命名
-model_name = f'GCN_lr{learning_rate}_dim{model.num_output_features}_epoch{num_epochs}.pt'
+model_name = f"{learning_rate}_{model.num_output_features}_{num_epochs}_{100*max_accuracy:.2f}.pt"
 # 保存模型 在model_save文件夹下
-torch.save(model.state_dict(), os.path.join('model_save', model_name))
-
-
-
+torch.save(model.state_dict(), os.path.join("model_save", model_name))

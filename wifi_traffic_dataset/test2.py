@@ -1,43 +1,61 @@
-import torch
-from torch_geometric.nn import GCNConv
-from torch_geometric.data import Data
+from seven_dwwarfs import Grumpy, Happy, Sleepy, Bashful, Sneezy, Dopey, Doc
 
-class GCN(torch.nn.Module):
-    def __init__(self, num_node_features, num_classes):
-        super(GCN, self).__init__()
-        self.conv1 = GCNConv(num_node_features, 16)
-        self.conv2 = GCNConv(16, num_classes)
+x = {"a": 37, "b": 42, "c": 927}
 
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
+x = 123456789.123456789e123456789
 
-        x = self.conv1(x, edge_index)
-        x = torch.nn.functional.relu(x)
-        x = torch.nn.functional.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index)
+if (
+    very_long_variable_name is not None
+    and very_long_variable_name.field > 0
+    or very_long_variable_name.is_debug
+):
+    z = "hello " + "world"
+else:
+    world = "world"
+    a = "hello {}".format(world)
+    f = rf"hello {world}"
+if this and that:
+    y = "hello " "world"  # FIXME: https://github.com/psf/black/issues/26
 
-        return torch.nn.functional.log_softmax(x, dim=1)
 
-# Assume we have 10 nodes, each with 5 features
-num_nodes = 10
-num_node_features = 5
-num_classes = 2
+class Foo(object):
+    def f(self):
+        return 37 * -2
 
-# Randomly initialize node feature matrix
-x = torch.randn(num_nodes, num_node_features)
+    def g(self, x, y=42):
+        return y
 
-# Define edges
-edge_index = torch.tensor([
-    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-    [1, 0, 3, 2, 5, 4, 7, 6, 9, 8]
-], dtype=torch.long)
 
-# Create a PyTorch Geometric data object
-data = Data(x=x, edge_index=edge_index)
+def f(a: List[int]):
+    return 37 - a[42 - u : y**3]
 
-# Initialize the GCN
-model = GCN(num_node_features, num_classes)
 
-# Forward pass
-out = model(data)
-print(out)
+def very_important_function(
+    template: str,
+    *variables,
+    file: os.PathLike,
+    debug: bool = False,
+):
+    """Applies `variables` to the `template` and writes to `file`."""
+    with open(file, "w") as f:
+        ...
+
+
+# fmt: off
+custom_formatting = [
+    0,  1,  2,
+    3,  4,  5,
+    6,  7,  8,
+]
+# fmt: on
+regular_formatting = [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+]
