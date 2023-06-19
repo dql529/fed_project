@@ -48,7 +48,7 @@ class DroneNode:
 
         # 定义损失函数和优化器
 
-        num_epochs = 10
+        num_epochs = 5
         learning_rate = 0.02
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
         self.local_model = Net18(num_output_features).to(device)
@@ -150,7 +150,7 @@ class DroneNode:
         # 评估本地模型性能 ,来自上述训练的 accuracy, precision, recall, f1
 
         performance = self.accuracy, self.precision, self.recall, self.f1
-
+        print(performance)
         # 发送本地模型及其性能到中心服务器
         response = requests.post(
             f"http://{central_server_ip}/upload_model",
@@ -214,6 +214,45 @@ class DroneNode:
 
             self.receive_global_model(model)
             print("LOGGER-INFO: global model received")
+
+            # Evaluate the received global model
+            #
+            #
+            #
+            #
+            # 先看看接受的模型准不准确
+            def to_predictions(outputs):
+                if self.local_model.num_output_features == 1:
+                    return (torch.sigmoid(outputs) > 0.5).float()
+                elif self.local_model.num_output_features == 2:
+                    return outputs.argmax(dim=1)
+                else:
+                    raise ValueError(
+                        "Invalid number of output features: {}".format(
+                            self.local_model.num_output_features
+                        )
+                    )
+
+            self.local_model.eval()  # Set the model to evaluation mode
+            with torch.no_grad():  # Do not calculate gradients to save memory
+                outputs_test = self.local_model(data_test_device)
+
+                predictions_test = to_predictions(outputs_test)
+
+                # Calculate metrics
+                accuracy = accuracy_score(
+                    data_test_device.y.cpu(), predictions_test.cpu()
+                )
+                precision = precision_score(
+                    data_test_device.y.cpu(), predictions_test.cpu()
+                )
+                recall = recall_score(data_test_device.y.cpu(), predictions_test.cpu())
+                f1 = f1_score(data_test_device.y.cpu(), predictions_test.cpu())
+                print(f"Accuracy of received model: {accuracy}")
+                print(f"Precision of received model: {precision}")
+                print(f"Recall of received model: {recall}")
+                print(f"F1 Score of received model: {f1}")
+            time.sleep(5)
             print("接收到全局模型，训练中")
             self.train_local_model()
             print("本节点训练完毕")

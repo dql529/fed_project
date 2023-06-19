@@ -26,7 +26,7 @@ class CentralServer:
 
     def initialize_global_model(self):
         num_epochs = 1000
-        learning_rate = 0.02
+        learning_rate = 0.01
         model = Net18(num_output_features).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -112,19 +112,12 @@ class CentralServer:
             print(f"Precision: {precision}")
             print(f"Recall: {recall}")
             print(f"F1 Score: {f1}")
-
+        time.sleep(5)
         self.global_model = model
 
         # 保存全局模型到文件， 以pt形式保存
         torch.save(self.global_model.state_dict(), "global_model.pt")
 
-    # def distribute_global_model(self, drone_nodes):
-    #     # 从文件中加载全局模型
-    #     with open("global_model.pkl", "rb") as file:
-    #         self.global_model = pickle.load(file)
-
-    #     for node in drone_nodes:
-    #         node.receive_global_model(self.global_model)
     def distribute_global_model(self, drone_nodes):
         # 从文件中加载全局模型
         self.global_model = Net18().to(device)
@@ -180,6 +173,7 @@ class CentralServer:
             print("发送全局模型-执行中--->" + ip)
             try:
                 self.global_model = Net18(num_output_features).to(device)
+                # 先生成模型，再加载训练好的模型
                 self.global_model.load_state_dict(torch.load("global_model.pt"))
             except Exception as e:
                 print("本地不存在全局模型，训练中……")
