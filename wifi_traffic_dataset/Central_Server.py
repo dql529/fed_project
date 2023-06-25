@@ -11,6 +11,7 @@ import multiprocessing
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import io
 
+torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_output_features = 2
 data_device = data.to(device)

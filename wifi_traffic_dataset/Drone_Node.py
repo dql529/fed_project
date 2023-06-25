@@ -15,6 +15,7 @@ import time
 from Model import Net18, data, data_test, Net18_3
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
+torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_output_features = 2
 data_device = data.to(device)
@@ -23,7 +24,7 @@ data_test_device = data_test.to(device)
 
 class DroneNode:
     def __init__(self):
-        self.port = 5002
+        self.port = 5001
         self.central_server_ip = "localhost:5000"
         self.drone_id = 1
         self.local_data = None
