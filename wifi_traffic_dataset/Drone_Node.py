@@ -2,7 +2,6 @@ import requests
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
 from Model import Net18, edges
 import pickle
 import io

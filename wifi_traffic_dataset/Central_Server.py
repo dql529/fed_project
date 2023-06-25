@@ -10,6 +10,7 @@ import time
 import multiprocessing
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import io
+import copy
 
 torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -26,8 +27,10 @@ class CentralServer:
         self.aggregation_method = "asynchronous"
 
     def initialize_global_model(self):
+        torch.manual_seed(0)
         num_epochs = 1000
-        learning_rate = 0.01
+        num_output_features = 2
+        learning_rate = 0.02
         model = Net18(num_output_features).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -95,6 +98,8 @@ class CentralServer:
 
         # 训练模型并记录每个epoch的准确率
         accuracies = []
+        best_accuracy = 0.0
+        best_model_state_dict = None
         for epoch in range(num_epochs):
             model.train()  # Set the model to training mode
             outputs = model(data_device)
@@ -113,11 +118,21 @@ class CentralServer:
             print(f"Precision: {precision}")
             print(f"Recall: {recall}")
             print(f"F1 Score: {f1}")
-        time.sleep(5)
-        self.global_model = model
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                best_model_state_dict = copy.deepcopy(model.state_dict())
+        # After training, load the best model weights
+        model.load_state_dict(best_model_state_dict)
+        # Save the best model to a file
+        torch.save(model.state_dict(), "global_model.pt")
+        # Find the maximum accuracy and its corresponding epoch
+        max_accuracy = max(accuracies)
+        max_epoch = accuracies.index(max_accuracy) + 1
 
-        # 保存全局模型到文件， 以pt形式保存
-        torch.save(self.global_model.state_dict(), "global_model.pt")
+        # Print the coordinates of the maximum point
+        print(
+            f"learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
+        )
 
     def distribute_global_model(self, drone_nodes):
         # 从文件中加载全局模型
