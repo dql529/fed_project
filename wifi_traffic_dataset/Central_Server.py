@@ -1,6 +1,6 @@
 import numpy as np
 from flask import Flask, request, jsonify
-from Model import Net18, data, data_test, Net18_3
+from Model import Net18
 import torch
 import torch.nn as nn
 import pickle
@@ -12,11 +12,17 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import io
 import copy
 
+# 读取数据
+server_train = torch.load("data_object/server_train.pt")
+server_test = torch.load("data_object/server_test.pt")
+
 torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_output_features = 2
-data_device = data.to(device)
-data_test_device = data_test.to(device)
+
+# 写法和drone node.py有区别   Drone node 中定义在clss中，根据self来调用，此处为了方便，直接定义在函数中
+data_device = server_train.to(device)
+data_test_device = server_test.to(device)
 
 
 class CentralServer:

@@ -1,6 +1,6 @@
 import numpy as np
 from flask import Flask, request, jsonify
-from Model import Net18, data, data_test, Net18_3
+from Model import Net18
 import torch
 import torch.nn as nn
 import pickle
@@ -19,10 +19,13 @@ num_epochs = 1000
 learning_rate = 0.02
 model = Net18(num_output_features).to(device)
 
-# 三层卷积层
-# model = Net18_3().to(device)
-data_device = data.to(device)
-data_test_device = data_test.to(device)
+server_train = torch.load("data_object/server_train.pt")
+server_test = torch.load("data_object/server_test.pt")
+
+
+# 写法和drone node.py有区别   Drone node 中定义在clss中，根据self来调用，此处为了方便，直接定义在函数中
+data_device = server_train.to(device)
+data_test_device = server_test.to(device)
 # 训练参数
 # 定义损失函数和优化器
 
@@ -88,12 +91,9 @@ def evaluate(data_test_device):
 
 # Train the model and evaluate at the end of each epoch
 import matplotlib.pyplot as plt
-import copy
 
 # 训练模型并记录每个epoch的准确率
 accuracies = []
-best_accuracy = 0.0
-best_model_state_dict = None
 for epoch in range(num_epochs):
     model.train()  # Set the model to training mode
     outputs = model(data_device)
@@ -112,14 +112,6 @@ for epoch in range(num_epochs):
     print(f"Precision: {precision}")
     print(f"Recall: {recall}")
     print(f"F1 Score: {f1}")
-    if accuracy > best_accuracy:
-        best_accuracy = accuracy
-        best_model_state_dict = copy.deepcopy(model.state_dict())
-
-# After training, load the best model weights
-model.load_state_dict(best_model_state_dict)
-# Save the best model to a file
-torch.save(model.state_dict(), "best_model.pt")
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
@@ -177,3 +169,5 @@ import os
 
 # 按照学习率，维度，epoch给模型命名
 model_name = f"{learning_rate}_{model.num_output_features}_{num_epochs}_{100*max_accuracy:.2f}.pt"
+# 保存模型 在model_save文件夹下
+torch.save(model.state_dict(), os.path.join("model_save", model_name))
