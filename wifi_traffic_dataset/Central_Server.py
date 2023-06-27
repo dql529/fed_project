@@ -12,11 +12,13 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import io
 import copy
 
+os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
+torch.manual_seed(0)
 # 读取数据
 server_train = torch.load("data_object/server_train.pt")
 server_test = torch.load("data_object/server_test.pt")
 
-torch.manual_seed(0)
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_output_features = 2
 
@@ -142,7 +144,7 @@ class CentralServer:
 
     def distribute_global_model(self, drone_nodes):
         # 从文件中加载全局模型
-        self.global_model = Net18().to(device)
+        self.global_model = Net18(num_output_features).to(device)
         self.global_model.load_state_dict(torch.load("global_model.pt"))
 
         for node in drone_nodes:
@@ -190,8 +192,7 @@ class CentralServer:
             drone_id = request.form["drone_id"]
             ip = request.form["ip"]
             print("接收到新节点，id：" + drone_id + ",ip:" + ip)
-            # 确定后需要启动新线程，且新线程睡眠1秒等待子节点完成flask初始化
-            time.sleep(1)
+
             print("发送全局模型-执行中--->" + ip)
             try:
                 self.global_model = Net18(num_output_features).to(device)

@@ -7,12 +7,15 @@ import pickle
 import base64
 import requests
 import time
-import multiprocessing
+import random
 from time import sleep
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from torch_geometric.data import Data
+import pandas as pd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(0)
+
 # 定义输出维度
 num_output_features = 2
 num_epochs = 1000
@@ -22,6 +25,54 @@ model = Net18(num_output_features).to(device)
 server_train = torch.load("data_object/server_train.pt")
 server_test = torch.load("data_object/server_test.pt")
 
+df_train = pd.read_csv("./train.csv", sep=" ")
+df_test = pd.read_csv("./test.csv", sep=" ")
+
+train_features = df_train.iloc[:, :18]
+train_labels = df_train.iloc[:, 18]
+test_features = df_test.iloc[:, :18]
+test_labels = df_test.iloc[:, 18]
+
+# local_data = torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32)
+# local_targets = torch.tensor(train_labels.values.reshape(-1,1), dtype=torch.float32)
+
+
+# Define the adjacency matrix for the feature computational dependencies
+adjacency_matrix = torch.tensor(
+    [
+        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    ],
+    dtype=torch.float,
+)
+# Convert the adjacency matrix to edge index format
+edges = adjacency_matrix.nonzero(as_tuple=False).t()
+data = Data(
+    x=torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32),
+    edge_index=edges,
+    y=torch.tensor(train_labels.values.reshape(-1, 1), dtype=torch.float32),
+)
+data_test = Data(
+    x=torch.tensor(test_features.values.reshape(-1, 18), dtype=torch.float32),
+    edge_index=edges,
+    y=torch.tensor(test_labels.values.reshape(-1, 1), dtype=torch.float32),
+)
 
 # 写法和drone node.py有区别   Drone node 中定义在clss中，根据self来调用，此处为了方便，直接定义在函数中
 data_device = server_train.to(device)

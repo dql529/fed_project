@@ -18,36 +18,25 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from Dataset import n_nodes
 
+
+os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
+
 torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_output_features = 2
 
-
-# 测试用
-# 读取数据
-server_train = torch.load("data_object/server_train.pt")
-server_test = torch.load("data_object/server_test.pt")
-
-
 # 对于每个节点，加载训练和测试数据
-node_train = []
-node_test = []
-for i in range(1, n_nodes + 1):
-    node_train.append(torch.load(f"data_object/node_train_{i}.pt"))
-    node_test.append(torch.load(f"data_object/node_test_{i}.pt"))
 
 
 class DroneNode:
-    def __init__(self, local_train_data, local_test_data):
+    def __init__(self, drone_id):
         self.port = 5001
         self.central_server_ip = "localhost:5000"
-        self.drone_id = 1
+        self.drone_id = 2
+        self.local_data = None
         self.local_model = None
         self.performance = None
-        self.data_device = local_train_data.to(device)
-        # self.data_test_device = local_test_data.to(device)
-        # 下面这行测试用
-        self.data_test_device = server_test.to(device)
+        # flask启动的时候data obejct会丢失，因此再服务器运行的时候定义。
 
     """DroneNode类在接收到全局模型时,将使用global_model的权重克隆一份副本,并将其分配给self.local_model.
 这样，每个无人机节点都可以在本地训练自己的模型副本，并在训练完成后将其上传给中心服务器。
@@ -63,12 +52,11 @@ class DroneNode:
             print("Error: No local model is available for training.")
             return
 
-        num_epochs = 1
+        # 定义损失函数和优化器
+
+        num_epochs = 100
         learning_rate = 0.0001
-
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
-
-        # self.local_model = Net18(num_output_features).to(device)
 
         if self.local_model.num_output_features == 1:
             criterion = nn.BCEWithLogitsLoss()
@@ -137,7 +125,6 @@ class DroneNode:
         for epoch in range(num_epochs):
             self.local_model.train()  # Set the model to training mode
             outputs = self.local_model(self.data_device)
-
             loss = compute_loss(outputs, self.data_device.y)
 
             optimizer.zero_grad()
@@ -149,14 +136,17 @@ class DroneNode:
             print(f"Epoch {epoch+1}/{num_epochs}:")
             print(f"Loss: {loss.item()}")
             print(f"Accuracy: {accuracy}")
-            # print(f"Precision: {precision}")
-            # print(f"Recall: {recall}")
-            # print(f"F1 Score: {f1}")
+            print(f"Precision: {precision}")
+            print(f"Recall: {recall}")
+            print(f"F1 Score: {f1}")
             self.accuracy = accuracy
             self.precision = precision
             self.recall = recall
             self.f1 = f1
+        import matplotlib.pyplot as plt
+        from matplotlib.ticker import FuncFormatter
 
+        # 定义一个函数，将y轴刻度转换为百分比格式，保留两位小数
         def to_percent(y, position):
             return f"{100*y:.2f}%"
 
@@ -190,7 +180,7 @@ class DroneNode:
 
         # Print the coordinates of the maximum point
         print(
-            f"learning rate {learning_rate}, epoch {num_epochs} and dimension {num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
+            f"learning rate {learning_rate}, epoch {num_epochs} and dimension {self.local_model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
         )
 
         # Annotate the maximum point
@@ -234,7 +224,7 @@ class DroneNode:
 
     def registerToMaster(self):
         time.sleep(2)
-        print("连接到主节点……,本节点端口：" + str(self.port) + "\n" + "本节点ID：" + str(self.drone_id))
+        print("连接到主节点……,本节点端口：" + str(self.port) + "\n")
         response = requests.post(
             f"http://{self.central_server_ip}/register",
             data={"drone_id": str(self.drone_id), "ip": "localhost:" + str(self.port)},
@@ -243,12 +233,28 @@ class DroneNode:
         print("Response content:", response.text)
         print("主节点连接建立结束……\n")
 
-    # def config(self, drone_id, local_data):
-    #     self.drone_id = drone_id
-    #     self.local_data = local_data
+    def config(self, drone_id, local_data):
+        self.drone_id = drone_id
+        self.local_data = local_data
 
     def run(self):
         app = Flask(__name__)
+        """
+        run起来之后数据会丢失，一定要重新定义，获取self的变量， winodws的线程问题，暂时没有
+        办法解决
+        
+        
+        """
+        self.data_device = torch.load(f"data_object/node_train_{drone_id}.pt").to(
+            device
+        )
+        self.data_test_device = torch.load(f"data_object/node_test_{drone_id}.pt").to(
+            device
+        )
+        print("服务器运行后的drone_id")
+        print(drone_id)
+
+        time.sleep(2)
 
         @app.route("/health_check", methods=["POST"])
         def health_check():
@@ -259,7 +265,9 @@ class DroneNode:
         # def config():
         #     drone_id = request.json["drone_id"]
         #     # local_data = request.form['local_data']
-        #     self.config(drone_id, data)  # 这里初始化配置，输入初始化数据，可以直接读本地的数据，分离部署也可以把本地数据拷贝
+        #     self.config(
+        #         drone_id, server_train
+        #     )  # 这里初始化配置，输入初始化数据，可以直接读本地的数据，分离部署也可以把本地数据拷贝
         #     return jsonify({"status": "初始化配置成功"})
 
         @app.route("/receive_model", methods=["POST"])
@@ -281,6 +289,8 @@ class DroneNode:
             # Evaluate the received global model
             #
             #
+            #
+            #
             # 先看看接受的模型准不准确
             def to_predictions(outputs):
                 if self.local_model.num_output_features == 1:
@@ -294,17 +304,12 @@ class DroneNode:
                         )
                     )
 
-            # 这边没有问题,global model这个方法将模型分配给了local_local model
-
             self.local_model.eval()  # Set the model to evaluation mode
-
             with torch.no_grad():  # Do not calculate gradients to save memory
                 outputs_test = self.local_model(self.data_test_device)
-                print("outputs_test", outputs_test)
-                time.sleep(3)
+
                 predictions_test = to_predictions(outputs_test)
-                print("predictions_test", predictions_test)
-                time.sleep(3)
+
                 # Calculate metrics
                 accuracy = accuracy_score(
                     self.data_test_device.y.cpu(), predictions_test.cpu()
@@ -320,18 +325,14 @@ class DroneNode:
                 print(f"Precision of received model: {precision}")
                 print(f"Recall of received model: {recall}")
                 print(f"F1 Score of received model: {f1}")
-
-            time.sleep(3)
+            time.sleep(2)
             print("接收到全局模型，训练中")
             self.train_local_model()
             print("本节点训练完毕")
             print("发送本地训练结果至主节点……")
             self.upload_local_model(self.central_server_ip)
             print("发送完毕……")
-
             return jsonify({"status": "OK"})
-
-            # os._exit(0)
 
         @app.route("/train", methods=["GET"])
         def train():
@@ -349,11 +350,11 @@ class DroneNode:
 
 if __name__ == "__main__":
     drone_id = int(sys.argv[2])
-    drone_node_instance = DroneNode(node_train[drone_id - 1], node_test[drone_id - 1])
-    drone_node_instance.port = sys.argv[1]
-    drone_node_instance.drone_id = drone_id
 
-    time.sleep(2)
+    drone_node_instance = DroneNode(drone_id)
+    drone_node_instance.port = sys.argv[1]
+
+    drone_node_instance.drone_id = drone_id
     # 初次连接，接收全局模型，先训练一次
     p1 = Process(target=drone_node_instance.registerToMaster)
     p1.start()
