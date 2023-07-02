@@ -14,6 +14,8 @@ import copy
 import os
 from queue import Queue
 from aggregation_solution import weighted_average_aggregation, average_aggregation
+import threading
+import json
 
 os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
 
@@ -39,6 +41,19 @@ class CentralServer:
         self.local_models = Queue()  # 使用队列来存储上传的模型
         self.aggregation_method = "asynchronous"
         self.drone_nodes = {}
+
+    def check_and_aggregate_models(self):
+        # 检查队列中是否有足够的模型进行聚合
+        if self.local_models.qsize() >= 3:
+            models_to_aggregate = []
+            for _ in range(3):
+                models_to_aggregate.append(self.local_models.get())
+            # 聚合本地模型并更新全局模型
+            self.aggregate_models(models_to_aggregate)
+            print("LOGGER-INFO: received model from child node and updated")
+
+            for drone_id, ip in self.drone_nodes.items():
+                self.send_model(ip)
 
     def initialize_global_model(self):
         torch.manual_seed(0)
@@ -202,7 +217,7 @@ class CentralServer:
             data={"model": global_model_serialized_base64},
         )
         print("发送全局模型-成功！--->" + ip)
-        return jsonify({"status": "success"})
+        return json.dumps({"status": "success"})
 
     # "0.0.0.0"表示应用程序在所有可用网络接口上运行
     def run(self, port=5000):
@@ -232,7 +247,7 @@ class CentralServer:
                 self.global_model.load_state_dict(torch.load("global_model.pt"))
 
             self.send_model(ip)
-            return jsonify({"status": "success"})  # 添加这一行
+            return jsonify({"status": "success"})
 
         @app.route("/upload_model", methods=["POST"])
         def upload_model():
@@ -250,40 +265,32 @@ class CentralServer:
             print(
                 f"Received model from drone {drone_id}, now have {self.local_models.qsize()} models in queue"
             )
-            # 检查队列中是否有足够的模型进行聚合
-            if self.local_models.qsize() >= 3:
-                models_to_aggregate = []
-                for _ in range(3):
-                    models_to_aggregate.append(self.local_models.get())
-                # 聚合本地模型并更新全局模型
-                self.aggregate_models(models_to_aggregate)
-                print("LOGGER-INFO: received model from child node and updated")
 
-                for drone_id, ip in self.drone_nodes.items():
-                    self.send_model(ip)
+            # 在后台处理模型聚合
+            threading.Thread(target=self.check_and_aggregate_models).start()
 
             return jsonify({"status": "success"})
 
-        @app.route("/distribute", methods=["POST"])
-        def send_model():
-            # TODO 这个之后改成批量的
-            url = request.json["url"]  # 分发本机的模型到子节点
+        # @app.route("/distribute", methods=["POST"])
+        # def send_model():
+        #     # TODO 这个之后改成批量的
+        #     url = request.json["url"]  # 分发本机的模型到子节点
 
-            with open("global_model.pkl", "rb") as file:
-                global_model = pickle.load(file)
-            # 序列化模型
-            global_model_serialized = pickle.dumps(global_model)
-            global_model_serialized_base64 = base64.b64encode(
-                global_model_serialized
-            ).decode()
-            # 发送模型到子节点服务器
-            response = requests.post(
-                f"http://{url}/receive_model",
-                data={"model": global_model_serialized_base64},
-            )
-            print("LOG-INFO:Global model sent to node:" + url)
-            # print("LOG-INFO:Global model data:"+global_model_serialized_base64)
-            return jsonify({"status": "success"})
+        #     with open("global_model.pkl", "rb") as file:
+        #         global_model = pickle.load(file)
+        #     # 序列化模型
+        #     global_model_serialized = pickle.dumps(global_model)
+        #     global_model_serialized_base64 = base64.b64encode(
+        #         global_model_serialized
+        #     ).decode()
+        #     # 发送模型到子节点服务器
+        #     response = requests.post(
+        #         f"http://{url}/receive_model",
+        #         data={"model": global_model_serialized_base64},
+        #     )
+        #     print("LOG-INFO:Global model sent to node:" + url)
+        #     # print("LOG-INFO:Global model data:"+global_model_serialized_base64)
+        #     return jsonify({"status": "success"})
 
         app.run(host="localhost", port=port)
 
