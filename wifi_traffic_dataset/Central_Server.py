@@ -11,8 +11,12 @@ import multiprocessing
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import io
 import copy
+import os
+from queue import Queue
+from aggregation_solution import weighted_average_aggregation, average_aggregation
 
 os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
+
 torch.manual_seed(0)
 # 读取数据
 server_train = torch.load("data_object/server_train.pt")
@@ -32,7 +36,9 @@ class CentralServer:
         self.global_model = None
         self.reputation = {}
         self.local_models = {}
+        self.local_models = Queue()  # 使用队列来存储上传的模型
         self.aggregation_method = "asynchronous"
+        self.drone_nodes = {}
 
     def initialize_global_model(self):
         torch.manual_seed(0)
@@ -153,31 +159,50 @@ class CentralServer:
     def update_reputation(self, drone_id, new_reputation):
         self.reputation[drone_id] = new_reputation
 
-    def aggregate_models(self):
-        if not self.local_models:
-            return
-
-        total_reputation = sum(self.reputation.values())
-        weighted_models = []
-
-        for drone_id, local_model in self.local_models.items():
-            weight = self.reputation[drone_id] / total_reputation
-            weighted_model = {k: v * weight for k, v in local_model.items()}
-            weighted_models.append(weighted_model)
-
-        # 通过加权平均聚合本地模型
-        aggregated_model = {}
-        for model in weighted_models:
-            for k, v in model.items():
-                if k not in aggregated_model:
-                    aggregated_model[k] = v
-                else:
-                    aggregated_model[k] += v
+    def aggregate_models(self, models_to_aggregate):
+        if self.aggregation_method == "asynchronous":
+            aggregated_model = weighted_average_aggregation(
+                models_to_aggregate, self.reputation
+            )
+        else:  # 默认使用平均聚合
+            aggregated_model = average_aggregation(models_to_aggregate)
 
         self.global_model = aggregated_model
-
         # 保存全局模型到文件， 以pt形式保存
-        torch.save(self.global_model.state_dict(), "global_model.pt")
+        torch.save(self.global_model, "global_model.pt")
+
+    def send_model(self, ip):
+        # 加载全局模型
+        try:
+            self.global_model = Net18(num_output_features).to(device)
+            # 先生成模型，再加载训练好的模型
+            self.global_model.load_state_dict(torch.load("global_model.pt"))
+            print("本地存在全局模型，发送中…… ")
+        except Exception as e:
+            print("本地不存在全局模型，训练中……")
+            self.initialize_global_model()
+            self.global_model = Net18(num_output_features).to(device)
+            self.global_model.load_state_dict(torch.load("global_model.pt"))
+
+        # Save the model's state_dict to a BytesIO buffer
+        buffer = io.BytesIO()
+        torch.save(self.global_model.state_dict(), buffer)
+
+        # Get the contents of the buffer
+        global_model_serialized = buffer.getvalue()
+
+        # Encode the bytes as a base64 string
+        global_model_serialized_base64 = base64.b64encode(
+            global_model_serialized
+        ).decode()
+        # 发送模型到子节点服务器
+        print("发送全局模型-发送！--->" + ip)
+        response = requests.post(
+            f"http://{ip}/receive_model",
+            data={"model": global_model_serialized_base64},
+        )
+        print("发送全局模型-成功！--->" + ip)
+        return jsonify({"status": "success"})
 
     # "0.0.0.0"表示应用程序在所有可用网络接口上运行
     def run(self, port=5000):
@@ -191,7 +216,9 @@ class CentralServer:
         def register():
             drone_id = request.form["drone_id"]
             ip = request.form["ip"]
-            print("接收到新节点，id：" + drone_id + ",ip:" + ip)
+            print("接收到新节点,id:" + drone_id + ",ip:" + ip)
+            # 将新的无人机节点添加到字典中
+            self.drone_nodes[drone_id] = ip
 
             print("发送全局模型-执行中--->" + ip)
             try:
@@ -204,26 +231,8 @@ class CentralServer:
                 self.global_model = Net18(num_output_features).to(device)
                 self.global_model.load_state_dict(torch.load("global_model.pt"))
 
-            # Save the model's state_dict to a BytesIO buffer
-            buffer = io.BytesIO()
-            torch.save(self.global_model.state_dict(), buffer)
-
-            # Get the contents of the buffer
-            global_model_serialized = buffer.getvalue()
-
-            # Encode the bytes as a base64 string
-            global_model_serialized_base64 = base64.b64encode(
-                global_model_serialized
-            ).decode()
-
-            # 发送模型到子节点服务器
-            print("发送全局模型-发送！--->" + ip)
-            response = requests.post(
-                f"http://{ip}/receive_model",
-                data={"model": global_model_serialized_base64},
-            )
-            print("发送全局模型-成功！--->" + ip)
-            return jsonify({"status": "success"})
+            self.send_model(ip)
+            return jsonify({"status": "success"})  # 添加这一行
 
         @app.route("/upload_model", methods=["POST"])
         def upload_model():
@@ -236,9 +245,23 @@ class CentralServer:
             # 更新声誉分数
             self.update_reputation(drone_id, performance)
 
-            # 聚合本地模型并更新全局模型
-            # self.aggregate_models({drone_id: local_model})
-            print("LOGGER-INFO: received model from child node and updated")
+            # 将模型添加到队列中
+            self.local_models.put({drone_id: local_model})
+            print(
+                f"Received model from drone {drone_id}, now have {self.local_models.qsize()} models in queue"
+            )
+            # 检查队列中是否有足够的模型进行聚合
+            if self.local_models.qsize() >= 3:
+                models_to_aggregate = []
+                for _ in range(3):
+                    models_to_aggregate.append(self.local_models.get())
+                # 聚合本地模型并更新全局模型
+                self.aggregate_models(models_to_aggregate)
+                print("LOGGER-INFO: received model from child node and updated")
+
+                for drone_id, ip in self.drone_nodes.items():
+                    self.send_model(ip)
+
             return jsonify({"status": "success"})
 
         @app.route("/distribute", methods=["POST"])

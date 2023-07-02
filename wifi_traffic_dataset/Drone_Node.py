@@ -17,7 +17,7 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from Dataset import n_nodes
-
+from tools import plot_accuracy_vs_epoch
 
 os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
 
@@ -54,7 +54,7 @@ class DroneNode:
 
         # 定义损失函数和优化器
 
-        num_epochs = 100
+        num_epochs = 1
         learning_rate = 0.0001
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
 
@@ -143,55 +143,8 @@ class DroneNode:
             self.precision = precision
             self.recall = recall
             self.f1 = f1
-        import matplotlib.pyplot as plt
-        from matplotlib.ticker import FuncFormatter
 
-        # 定义一个函数，将y轴刻度转换为百分比格式，保留两位小数
-        def to_percent(y, position):
-            return f"{100*y:.2f}%"
-
-        formatter = FuncFormatter(to_percent)
-
-        plt.figure(figsize=(10, 6))  # Set the figure size
-        plt.plot(
-            range(1, num_epochs + 1),
-            accuracies,
-            marker="o",
-            linestyle="-",
-            color="b",
-            label="Accuracy",
-        )  # Plot accuracy
-        plt.xlabel("Epoch", fontsize=14)  # Set the label for the x-axis
-        plt.ylabel("Accuracy", fontsize=14)  # Set the label for the y-axis
-        plt.title("Accuracy vs. Epoch", fontsize=16)  # Set the title
-        plt.grid(True)  # Add grid lines
-        plt.legend(fontsize=12)  # Add a legend
-        plt.xticks(fontsize=12)  # Set the size of the x-axis ticks
-        plt.yticks(fontsize=12)  # Set the size of the y-axis ticks
-        plt.gca().yaxis.set_major_formatter(
-            formatter
-        )  # Set the formatter for the y-axis
-        plt.xlim([1, num_epochs])  # Set the range of the x-axis
-        plt.ylim([0, 1])  # Set the range of the y-axis
-
-        # Find the maximum accuracy and its corresponding epoch
-        max_accuracy = max(accuracies)
-        max_epoch = accuracies.index(max_accuracy) + 1
-
-        # Print the coordinates of the maximum point
-        print(
-            f"learning rate {learning_rate}, epoch {num_epochs} and dimension {self.local_model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
-        )
-
-        # Annotate the maximum point
-        plt.annotate(
-            f"Max Accuracy: {100*max_accuracy:.2f}%",
-            xy=(max_epoch, max_accuracy),
-            xytext=(max_epoch + 5, max_accuracy - 0.1),
-            arrowprops=dict(facecolor="red", shrink=0.05),
-        )
-
-        plt.show()
+        # plot_accuracy_vs_epoch(accuracies, num_epochs, learning_rate, self.local_model)
 
     def upload_local_model(self, central_server_ip):
         # 序列化本地模型
@@ -204,6 +157,7 @@ class DroneNode:
 
         performance = self.accuracy, self.precision, self.recall, self.f1
         print(performance)
+
         # 发送本地模型及其性能到中心服务器
         response = requests.post(
             f"http://{central_server_ip}/upload_model",
@@ -251,10 +205,6 @@ class DroneNode:
         self.data_test_device = torch.load(f"data_object/node_test_{drone_id}.pt").to(
             device
         )
-        print("服务器运行后的drone_id")
-        print(drone_id)
-
-        time.sleep(2)
 
         @app.route("/health_check", methods=["POST"])
         def health_check():
@@ -286,11 +236,6 @@ class DroneNode:
             self.receive_global_model(model)
             print("LOGGER-INFO: global model received")
 
-            # Evaluate the received global model
-            #
-            #
-            #
-            #
             # 先看看接受的模型准不准确
             def to_predictions(outputs):
                 if self.local_model.num_output_features == 1:
@@ -325,13 +270,14 @@ class DroneNode:
                 print(f"Precision of received model: {precision}")
                 print(f"Recall of received model: {recall}")
                 print(f"F1 Score of received model: {f1}")
-            time.sleep(2)
+
             print("接收到全局模型，训练中")
             self.train_local_model()
             print("本节点训练完毕")
             print("发送本地训练结果至主节点……")
             self.upload_local_model(self.central_server_ip)
             print("发送完毕……")
+
             return jsonify({"status": "OK"})
 
         @app.route("/train", methods=["GET"])
