@@ -54,8 +54,8 @@ class DroneNode:
 
         # 定义损失函数和优化器
 
-        num_epochs = 1
-        learning_rate = 0.0001
+        num_epochs = 20
+        learning_rate = 0.01
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
 
         if self.local_model.num_output_features == 1:
@@ -164,7 +164,7 @@ class DroneNode:
             data={
                 "drone_id": self.drone_id,
                 "local_model": local_model_serialized_base64,
-                "performance": performance,
+                "performance": self.f1,
             },
         )
 
@@ -177,7 +177,6 @@ class DroneNode:
             print(f"Drone {self.drone_id}: Model upload failed.")
 
     def registerToMaster(self):
-        time.sleep(2)
         print("连接到主节点……,本节点端口：" + str(self.port) + "\n")
         response = requests.post(
             f"http://{self.central_server_ip}/register",

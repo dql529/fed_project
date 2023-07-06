@@ -16,6 +16,7 @@ from queue import Queue
 from aggregation_solution import weighted_average_aggregation, average_aggregation
 import threading
 import json
+from tools import plot_accuracy_vs_epoch
 
 os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
 
@@ -23,8 +24,15 @@ torch.manual_seed(0)
 # 读取数据
 server_train = torch.load("data_object/server_train.pt")
 server_test = torch.load("data_object/server_test.pt")
-
-
+num_output_features = 2
+if num_output_features == 1:
+    criterion = nn.BCEWithLogitsLoss()
+elif num_output_features == 2:
+    criterion = nn.CrossEntropyLoss()
+else:
+    raise ValueError(
+        "Invalid number of output features: {}".format(num_output_features)
+    )
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_output_features = 2
 
@@ -41,6 +49,52 @@ class CentralServer:
         self.local_models = Queue()  # 使用队列来存储上传的模型
         self.aggregation_method = "asynchronous"
         self.drone_nodes = {}
+        self.aggregation_accuracies = []
+        self.num_aggregations = 0  # 记录聚合次数
+
+    def fed_evaluate(self, model_dict, data_test_device):
+        # 创建一个新的模型实例
+        temp_model = Net18(num_output_features).to(device)
+        # 加载模型参数
+        temp_model.load_state_dict(model_dict)
+        temp_model.eval()  # Set the model to evaluation mode
+        with torch.no_grad():  # Do not calculate gradients to save memory
+            outputs_test = temp_model(data_test_device)
+
+            predictions_test = self.to_predictions(outputs_test)
+
+            # Calculate metrics
+            accuracy = accuracy_score(data_test_device.y.cpu(), predictions_test.cpu())
+            precision = precision_score(
+                data_test_device.y.cpu(), predictions_test.cpu()
+            )
+            recall = recall_score(data_test_device.y.cpu(), predictions_test.cpu())
+            f1 = f1_score(data_test_device.y.cpu(), predictions_test.cpu())
+            return accuracy, precision, recall, f1
+
+    def compute_loss(self, outputs, labels):
+        if self.global_model.num_output_features == 1:
+            return criterion(outputs, labels)
+        elif self.global_model.num_output_features == 2:
+            return criterion(outputs, labels.squeeze().long())
+        else:
+            raise ValueError(
+                "Invalid number of output features: {}".format(
+                    self.global_model.num_output_features
+                )
+            )
+
+    def to_predictions(self, outputs):
+        if self.global_model.num_output_features == 1:
+            return (torch.sigmoid(outputs) > 0.5).float()
+        elif self.global_model.num_output_features == 2:
+            return outputs.argmax(dim=1)
+        else:
+            raise ValueError(
+                "Invalid number of output features: {}".format(
+                    self.global_model.num_output_features
+                )
+            )
 
     def check_and_aggregate_models(self):
         # 检查队列中是否有足够的模型进行聚合
@@ -55,24 +109,31 @@ class CentralServer:
             for drone_id, ip in self.drone_nodes.items():
                 self.send_model(ip)
 
+            accuracy, precision, recall, f1 = self.fed_evaluate(
+                self.global_model, data_test_device
+            )
+            self.aggregation_accuracies.append(accuracy)
+            self.num_aggregations += 1  # 增加模型聚合的次数
+
+            # 当有10条记录就开始动态画图
+
+            if self.num_aggregations == 30:
+                plot_accuracy_vs_epoch(
+                    self.aggregation_accuracies,
+                    self.num_aggregations,
+                    learning_rate=0.02,
+                )
+
+            print("Current aggregation accuracy: ", accuracy)
+            print("Aggregation accuracies so far: ", self.aggregation_accuracies)
+
     def initialize_global_model(self):
         torch.manual_seed(0)
-        num_epochs = 1000
+        num_epochs = 100
         num_output_features = 2
         learning_rate = 0.02
         model = Net18(num_output_features).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
-        if model.num_output_features == 1:
-            criterion = nn.BCEWithLogitsLoss()
-        elif model.num_output_features == 2:
-            criterion = nn.CrossEntropyLoss()
-        else:
-            raise ValueError(
-                "Invalid number of output features: {}".format(
-                    model.num_output_features
-                )
-            )
 
         if device.type == "cuda":
             print(
@@ -81,38 +142,12 @@ class CentralServer:
         else:
             print(f"Using device: {device}")
 
-        def compute_loss(outputs, labels):
-            if model.num_output_features == 1:
-                return criterion(outputs, labels)
-            elif model.num_output_features == 2:
-                return criterion(outputs, labels.squeeze().long())
-            else:
-                raise ValueError(
-                    "Invalid number of output features: {}".format(
-                        model.num_output_features
-                    )
-                )
-
-        def to_predictions(outputs):
-            if model.num_output_features == 1:
-                return (torch.sigmoid(outputs) > 0.5).float()
-            elif model.num_output_features == 2:
-                return outputs.argmax(dim=1)
-            else:
-                raise ValueError(
-                    "Invalid number of output features: {}".format(
-                        model.num_output_features
-                    )
-                )
-
-            # Evaluate the model on the test data
-
         def evaluate(data_test_device):
             model.eval()  # Set the model to evaluation mode
             with torch.no_grad():  # Do not calculate gradients to save memory
                 outputs_test = model(data_test_device)
 
-                predictions_test = to_predictions(outputs_test)
+                predictions_test = self.to_predictions(outputs_test)
 
                 # Calculate metrics
                 accuracy = accuracy_score(
@@ -133,7 +168,7 @@ class CentralServer:
             model.train()  # Set the model to training mode
             outputs = model(data_device)
 
-            loss = compute_loss(outputs, data_device.y)
+            loss = self.compute_loss(outputs, data_device.y)
 
             optimizer.zero_grad()
             loss.backward()
@@ -163,14 +198,6 @@ class CentralServer:
             f"learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
         )
 
-    def distribute_global_model(self, drone_nodes):
-        # 从文件中加载全局模型
-        self.global_model = Net18(num_output_features).to(device)
-        self.global_model.load_state_dict(torch.load("global_model.pt"))
-
-        for node in drone_nodes:
-            node.receive_global_model(self.global_model)
-
     def update_reputation(self, drone_id, new_reputation):
         self.reputation[drone_id] = new_reputation
 
@@ -196,8 +223,6 @@ class CentralServer:
         except Exception as e:
             print("本地不存在全局模型，训练中……")
             self.initialize_global_model()
-            self.global_model = Net18(num_output_features).to(device)
-            self.global_model.load_state_dict(torch.load("global_model.pt"))
 
         # Save the model's state_dict to a BytesIO buffer
         buffer = io.BytesIO()
@@ -243,8 +268,8 @@ class CentralServer:
             except Exception as e:
                 print("本地不存在全局模型，训练中……")
                 self.initialize_global_model()
-                self.global_model = Net18(num_output_features).to(device)
-                self.global_model.load_state_dict(torch.load("global_model.pt"))
+                # self.global_model = Net18(num_output_features).to(device)
+                # self.global_model.load_state_dict(torch.load("global_model.pt"))
 
             self.send_model(ip)
             return jsonify({"status": "success"})
@@ -259,7 +284,8 @@ class CentralServer:
             performance = float(request.form["performance"])
             # 更新声誉分数
             self.update_reputation(drone_id, performance)
-
+            print("reputation: " + str(self.reputation))
+            time.sleep(1)
             # 将模型添加到队列中
             self.local_models.put({drone_id: local_model})
             print(

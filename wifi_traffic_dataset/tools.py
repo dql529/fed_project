@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 
-def plot_accuracy_vs_epoch(accuracies, num_epochs, learning_rate, model):
+def plot_accuracy_vs_epoch(accuracies, num_epochs, learning_rate):
     # 定义一个函数，将y轴刻度转换为百分比格式，保留两位小数
     def to_percent(y, position):
         return f"{100*y:.2f}%"
@@ -35,14 +35,14 @@ def plot_accuracy_vs_epoch(accuracies, num_epochs, learning_rate, model):
 
     # Print the coordinates of the maximum point
     print(
-        f"learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
+        f"learning rate {learning_rate}, epoch {num_epochs} ,Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
     )
 
     # Annotate the maximum point
     plt.annotate(
         f"Max Accuracy: {100*max_accuracy:.2f}%",
         xy=(max_epoch, max_accuracy),
-        xytext=(max_epoch + 5, max_accuracy - 0.1),
+        xytext=(max_epoch, max_accuracy - 0.1),
         arrowprops=dict(facecolor="red", shrink=0.05),
     )
 
