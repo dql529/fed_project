@@ -18,8 +18,8 @@ torch.manual_seed(0)
 
 # 定义输出维度
 num_output_features = 2
-num_epochs = 100
-learning_rate = 0.01
+num_epochs = 30
+learning_rate = 0.02
 model = Net18(num_output_features).to(device)
 
 df_train = pd.read_csv("./train.csv", sep=" ")

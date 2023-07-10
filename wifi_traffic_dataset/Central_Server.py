@@ -17,7 +17,12 @@ from aggregation_solution import weighted_average_aggregation, average_aggregati
 import threading
 import json
 from tools import plot_accuracy_vs_epoch
+from matplotlib import pyplot as plt
+import logging
+import sys
 
+log = logging.getLogger("werkzeug")
+log.setLevel(logging.ERROR)
 os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
 
 torch.manual_seed(0)
@@ -44,22 +49,22 @@ data_test_device = server_test.to(device)
 class CentralServer:
     def __init__(self):
         self.global_model = None
+        self.aggregated_global_model = None
         self.reputation = {}
         self.local_models = {}
         self.local_models = Queue()  # 使用队列来存储上传的模型
-        self.aggregation_method = "asynchronous"
+        self.lock = threading.Lock()  # 创建锁
+        self.aggregation_method = "average aggregation"
+        # self.aggregation_method = "average aggregation"
+
         self.drone_nodes = {}
         self.aggregation_accuracies = []
         self.num_aggregations = 0  # 记录聚合次数
+        threading.Thread(target=self.check_and_aggregate_models).start()
 
-    def fed_evaluate(self, model_dict, data_test_device):
-        # 创建一个新的模型实例
-        temp_model = Net18(num_output_features).to(device)
-        # 加载模型参数
-        temp_model.load_state_dict(model_dict)
-        temp_model.eval()  # Set the model to evaluation mode
+    def fed_evaluate(self, model, data_test_device):
         with torch.no_grad():  # Do not calculate gradients to save memory
-            outputs_test = temp_model(data_test_device)
+            outputs_test = model(data_test_device)
 
             predictions_test = self.to_predictions(outputs_test)
 
@@ -97,39 +102,54 @@ class CentralServer:
             )
 
     def check_and_aggregate_models(self):
+        print("LOGGER-INFO: check_and_aggregate_models() is called")
         # 检查队列中是否有足够的模型进行聚合
-        if self.local_models.qsize() >= 3:
-            models_to_aggregate = []
-            for _ in range(3):
-                models_to_aggregate.append(self.local_models.get())
-            # 聚合本地模型并更新全局模型
-            self.aggregate_models(models_to_aggregate)
-            print("LOGGER-INFO: received model from child node and updated")
+        start_time = time.time()
+        max_wait_time = 50  # 最大等待时间（秒）
+        while True:
+            if self.local_models.qsize() >= 3:
+                models_to_aggregate = []
+                self.lock.acquire()
+                try:
+                    for _ in range(3):
+                        models_to_aggregate.append(self.local_models.get())
+                finally:
+                    self.lock.release()
+                self.aggregate_models(models_to_aggregate)
 
-            for drone_id, ip in self.drone_nodes.items():
-                self.send_model(ip)
+                for drone_id, ip in self.drone_nodes.items():
+                    self.send_model(ip, "self.aggregated_global_model")
 
-            accuracy, precision, recall, f1 = self.fed_evaluate(
-                self.global_model, data_test_device
-            )
-            self.aggregation_accuracies.append(accuracy)
-            self.num_aggregations += 1  # 增加模型聚合的次数
+                time.sleep(5)
+                accuracy, precision, recall, f1 = self.fed_evaluate(
+                    self.aggregated_global_model, data_test_device
+                )
+                self.aggregation_accuracies.append(accuracy)
+                self.num_aggregations += 1  # 增加模型聚合的次数
+                print("Current aggregation accuracy: ", accuracy)
 
             # 当有10条记录就开始动态画图
-
             if self.num_aggregations == 30:
                 plot_accuracy_vs_epoch(
                     self.aggregation_accuracies,
                     self.num_aggregations,
                     learning_rate=0.02,
                 )
+                plt.savefig(
+                    f"accuracy_vs_epoch_{self.num_aggregations}_aggregration method {self.aggregation_method}.png"
+                )
+                print("Aggregation accuracies so far: ", self.aggregation_accuracies)
+                print("Program is about to terminate")
+                sys.exit()  # Terminate the program
 
-            print("Current aggregation accuracy: ", accuracy)
-            print("Aggregation accuracies so far: ", self.aggregation_accuracies)
+            # 如果等待时间超过最大等待时间，退出循环
+            if time.time() - start_time > max_wait_time:
+                print("Max wait time exceeded, exiting")
+                break
 
     def initialize_global_model(self):
         torch.manual_seed(0)
-        num_epochs = 100
+        num_epochs = 10
         num_output_features = 2
         learning_rate = 0.02
         model = Net18(num_output_features).to(device)
@@ -198,33 +218,49 @@ class CentralServer:
             f"learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
         )
 
+        self.global_model = model
+
     def update_reputation(self, drone_id, new_reputation):
         self.reputation[drone_id] = new_reputation
 
     def aggregate_models(self, models_to_aggregate):
-        if self.aggregation_method == "asynchronous":
+        if self.aggregation_method == "async_weighted_average":
+            print("Using weighted average aggregation")
             aggregated_model = weighted_average_aggregation(
                 models_to_aggregate, self.reputation
             )
+        elif self.aggregation_method == "average aggregation":
+            print("Using average aggregation")
+            aggregated_model = average_aggregation(models_to_aggregate)
         else:  # 默认使用平均聚合
+            print("Using average aggregation")
             aggregated_model = average_aggregation(models_to_aggregate)
 
-        self.global_model = aggregated_model
-        # 保存全局模型到文件， 以pt形式保存
-        torch.save(self.global_model, "global_model.pt")
+        self.aggregated_global_model = Net18(num_output_features).to(device)  # 创建新的模型实例
+        self.aggregated_global_model.load_state_dict(aggregated_model)  # 加载聚合后的权重
 
-    def send_model(self, ip):
-        # 加载全局模型
+        # 保存全局模型到文件， 以pt形式保存
+        torch.save(
+            self.aggregated_global_model.state_dict(), "aggregrated_global_model.pt"
+        )
+
+    def send_model(self, ip, model_type="global_model"):
+        # 根据 model_type 加载不同的模型
+        if model_type == "aggregated_global_model":
+            model_path = "aggregated_global_model.pt"
+        else:  # 默认加载 global_model
+            model_path = "global_model.pt"
+
+        # 加载模型
         try:
             self.global_model = Net18(num_output_features).to(device)
             # 先生成模型，再加载训练好的模型
-            self.global_model.load_state_dict(torch.load("global_model.pt"))
-            print("本地存在全局模型，发送中…… ")
+            self.global_model.load_state_dict(torch.load(model_path))
+            print(f"本地存在 {model_type}，发送中…… ")
         except Exception as e:
-            print("本地不存在全局模型，训练中……")
+            print(f"本地不存在 {model_type}，训练中……")
             self.initialize_global_model()
 
-        # Save the model's state_dict to a BytesIO buffer
         buffer = io.BytesIO()
         torch.save(self.global_model.state_dict(), buffer)
 
@@ -261,17 +297,7 @@ class CentralServer:
             self.drone_nodes[drone_id] = ip
 
             print("发送全局模型-执行中--->" + ip)
-            try:
-                self.global_model = Net18(num_output_features).to(device)
-                # 先生成模型，再加载训练好的模型
-                self.global_model.load_state_dict(torch.load("global_model.pt"))
-            except Exception as e:
-                print("本地不存在全局模型，训练中……")
-                self.initialize_global_model()
-                # self.global_model = Net18(num_output_features).to(device)
-                # self.global_model.load_state_dict(torch.load("global_model.pt"))
-
-            self.send_model(ip)
+            self.send_model(ip, "global_model")
             return jsonify({"status": "success"})
 
         @app.route("/upload_model", methods=["POST"])
@@ -285,38 +311,10 @@ class CentralServer:
             # 更新声誉分数
             self.update_reputation(drone_id, performance)
             print("reputation: " + str(self.reputation))
-            time.sleep(1)
-            # 将模型添加到队列中
+
             self.local_models.put({drone_id: local_model})
-            print(
-                f"Received model from drone {drone_id}, now have {self.local_models.qsize()} models in queue"
-            )
-
-            # 在后台处理模型聚合
-            threading.Thread(target=self.check_and_aggregate_models).start()
-
+            print("local models: " + str(self.local_models))
             return jsonify({"status": "success"})
-
-        # @app.route("/distribute", methods=["POST"])
-        # def send_model():
-        #     # TODO 这个之后改成批量的
-        #     url = request.json["url"]  # 分发本机的模型到子节点
-
-        #     with open("global_model.pkl", "rb") as file:
-        #         global_model = pickle.load(file)
-        #     # 序列化模型
-        #     global_model_serialized = pickle.dumps(global_model)
-        #     global_model_serialized_base64 = base64.b64encode(
-        #         global_model_serialized
-        #     ).decode()
-        #     # 发送模型到子节点服务器
-        #     response = requests.post(
-        #         f"http://{url}/receive_model",
-        #         data={"model": global_model_serialized_base64},
-        #     )
-        #     print("LOG-INFO:Global model sent to node:" + url)
-        #     # print("LOG-INFO:Global model data:"+global_model_serialized_base64)
-        #     return jsonify({"status": "success"})
 
         app.run(host="localhost", port=port)
 

@@ -34,7 +34,7 @@ data_test_device = node_test[3].to(device)
 
 # 定义输出维度
 num_output_features = 2
-num_epochs = 1000
+num_epochs = 100
 learning_rate = 0.02
 model = Net18(num_output_features).to(device)
 model.load_state_dict(torch.load("global_model.pt"))

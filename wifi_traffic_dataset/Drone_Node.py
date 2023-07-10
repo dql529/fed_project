@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from Dataset import n_nodes
 from tools import plot_accuracy_vs_epoch
+import copy
 
 os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
 
@@ -54,7 +55,7 @@ class DroneNode:
 
         # 定义损失函数和优化器
 
-        num_epochs = 20
+        num_epochs = 1
         learning_rate = 0.01
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
 
@@ -122,6 +123,11 @@ class DroneNode:
 
         # 训练循环
         accuracies = []
+        best_accuracy = 0.0
+        best_model_state_dict = None
+        best_precision = 0.0
+        best_recall = 0.0
+        best_f1 = 0.0
         for epoch in range(num_epochs):
             self.local_model.train()  # Set the model to training mode
             outputs = self.local_model(self.data_device)
@@ -144,7 +150,29 @@ class DroneNode:
             self.recall = recall
             self.f1 = f1
 
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                best_model_state_dict = copy.deepcopy(self.local_model.state_dict())
+                best_precision = precision
+                best_recall = recall
+                best_f1 = f1
+
+        # Find the maximum accuracy and its corresponding epoch
+        max_accuracy = max(accuracies)
+        max_epoch = accuracies.index(max_accuracy) + 1
+
+        # Print the coordinates of the maximum point
+        print(
+            f"learning rate {learning_rate}, epoch {num_epochs} and dimension {num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
+        )
+
         # plot_accuracy_vs_epoch(accuracies, num_epochs, learning_rate, self.local_model)
+        self.local_model.load_state_dict(best_model_state_dict)
+        # Save the best metrics to self
+        self.accuracy = best_accuracy
+        self.precision = best_precision
+        self.recall = best_recall
+        self.f1 = best_f1
 
     def upload_local_model(self, central_server_ip):
         # 序列化本地模型
@@ -164,12 +192,12 @@ class DroneNode:
             data={
                 "drone_id": self.drone_id,
                 "local_model": local_model_serialized_base64,
-                "performance": self.f1,
+                "performance": self.accuracy,
             },
         )
 
-        print("Response status code:", response.status_code)
-        print("Response content:", response.text)
+        # print("Response status code:", response.status_code)
+        # print("Response content:", response.text)
 
         if response.json()["status"] == "success":
             print(f"Drone {self.drone_id}: Model uploaded successfully.")
@@ -182,9 +210,9 @@ class DroneNode:
             f"http://{self.central_server_ip}/register",
             data={"drone_id": str(self.drone_id), "ip": "localhost:" + str(self.port)},
         )
-        print("Response status code:", response.status_code)
-        print("Response content:", response.text)
-        print("主节点连接建立结束……\n")
+        # print("Response status code:", response.status_code)
+        # print("Response content:", response.text)
+        # print("主节点连接建立结束……\n")
 
     def config(self, drone_id, local_data):
         self.drone_id = drone_id
@@ -209,15 +237,6 @@ class DroneNode:
         def health_check():
             # drone_id = request.form['drone_id']
             return jsonify({"status": "OK"})
-
-        # @app.route("/config", methods=["POST"])
-        # def config():
-        #     drone_id = request.json["drone_id"]
-        #     # local_data = request.form['local_data']
-        #     self.config(
-        #         drone_id, server_train
-        #     )  # 这里初始化配置，输入初始化数据，可以直接读本地的数据，分离部署也可以把本地数据拷贝
-        #     return jsonify({"status": "初始化配置成功"})
 
         @app.route("/receive_model", methods=["POST"])
         def receiveModel():
@@ -272,17 +291,16 @@ class DroneNode:
 
             print("接收到全局模型，训练中")
             self.train_local_model()
-            print("本节点训练完毕")
             print("发送本地训练结果至主节点……")
             self.upload_local_model(self.central_server_ip)
             print("发送完毕……")
 
             return jsonify({"status": "OK"})
 
-        @app.route("/train", methods=["GET"])
-        def train():
-            self.train_local_model()
-            return jsonify({"status": "train finished"})
+        # @app.route("/train", methods=["GET"])
+        # def train():
+        #     self.train_local_model()
+        #     return jsonify({"status": "train finished"})
 
         @app.route("/uploadToMaster", methods=["POST"])
         def uploadToMaster(ip=self.central_server_ip):
