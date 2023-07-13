@@ -1,7 +1,10 @@
 import torch
 
+torch.manual_seed(0)
+
 
 def weighted_average_aggregation(models_to_aggregate, reputations):
+    print("new weighted_average_aggregation used")
     total_reputation = sum(reputations.values())
     weighted_models = []
 
@@ -28,17 +31,22 @@ def weighted_average_aggregation(models_to_aggregate, reputations):
 
 
 def average_aggregation(models_to_aggregate):
-    num_models = len(models_to_aggregate)
-    aggregated_model = {}
+    # num_models = len(models_to_aggregate)
 
+    # aggregated_model = {}
+
+    # for model_dict in models_to_aggregate:
+    #     for drone_id, local_model in model_dict.items():
+    #         if not aggregated_model:
+    #             aggregated_model = {
+    #                 k: v / num_models for k, v in local_model.state_dict().items()
+    #             }
+    #         else:
+    #             for k, v in local_model.state_dict().items():
+    #                 aggregated_model[k] += v / num_models
+
+    # return aggregated_model
+    print("new average_aggregation used")
     for model_dict in models_to_aggregate:
         for drone_id, local_model in model_dict.items():
-            if not aggregated_model:
-                aggregated_model = {
-                    k: v / num_models for k, v in local_model.state_dict().items()
-                }
-            else:
-                for k, v in local_model.state_dict().items():
-                    aggregated_model[k] += v / num_models
-
-    return aggregated_model
+            return local_model.state_dict()

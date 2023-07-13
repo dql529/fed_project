@@ -55,8 +55,8 @@ class DroneNode:
 
         # 定义损失函数和优化器
 
-        num_epochs = 1
-        learning_rate = 0.01
+        num_epochs = 15
+        learning_rate = 0.02
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
 
         if self.local_model.num_output_features == 1:
@@ -169,10 +169,10 @@ class DroneNode:
         # plot_accuracy_vs_epoch(accuracies, num_epochs, learning_rate, self.local_model)
         self.local_model.load_state_dict(best_model_state_dict)
         # Save the best metrics to self
-        self.accuracy = best_accuracy
-        self.precision = best_precision
-        self.recall = best_recall
-        self.f1 = best_f1
+        self.accuracy = round(best_accuracy, 4)
+        self.precision = round(best_precision, 4)
+        self.recall = round(best_recall, 4)
+        self.f1 = round(best_f1, 4)
 
     def upload_local_model(self, central_server_ip):
         # 序列化本地模型
@@ -184,7 +184,7 @@ class DroneNode:
         # 评估本地模型性能 ,来自上述训练的 accuracy, precision, recall, f1
 
         performance = self.accuracy, self.precision, self.recall, self.f1
-        print(performance)
+        print(self.accuracy)
 
         # 发送本地模型及其性能到中心服务器
         response = requests.post(

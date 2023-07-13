@@ -1,0 +1,45 @@
+import numpy as np
+from flask import Flask, request, jsonify
+from Model import Net18
+import torch
+import torch.nn as nn
+import pickle
+import base64
+import requests
+import time
+import multiprocessing
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import os
+from queue import Queue
+from aggregation_solution import weighted_average_aggregation, average_aggregation
+
+from tools import plot_accuracy_vs_epoch
+from matplotlib import pyplot as plt
+
+
+num_output_features = 2
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model_path1 = "aggregated_global_model.pt"
+model_path2 = "global_model.pt"
+
+
+def test_average_aggregation():
+    # 创建两个简单的模型
+    model1 = Net18(num_output_features).to(device)
+    model1.load_state_dict(torch.load(model_path1))
+    model2 = Net18(num_output_features).to(device)
+    model2.load_state_dict(torch.load(model_path2))
+
+    # 使用average_aggregation函数进行平均
+    aggregated_model_dict = average_aggregation([{1: model1}, {2: model2}])
+
+    # 创建一个新的模型来加载聚合后的权重
+    aggregated_model = Net18(num_output_features).to(device)
+    aggregated_model.load_state_dict(aggregated_model_dict)
+
+    # 检查聚合后的模型权重是否正确
+    for param in aggregated_model.parameters():
+        print(param.data)
+
+
+test_average_aggregation()

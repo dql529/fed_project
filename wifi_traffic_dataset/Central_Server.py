@@ -69,12 +69,18 @@ class CentralServer:
             predictions_test = self.to_predictions(outputs_test)
 
             # Calculate metrics
-            accuracy = accuracy_score(data_test_device.y.cpu(), predictions_test.cpu())
-            precision = precision_score(
-                data_test_device.y.cpu(), predictions_test.cpu()
+            # Calculate metrics
+            accuracy = round(
+                accuracy_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
             )
-            recall = recall_score(data_test_device.y.cpu(), predictions_test.cpu())
-            f1 = f1_score(data_test_device.y.cpu(), predictions_test.cpu())
+            precision = round(
+                precision_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
+            )
+            recall = round(
+                recall_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
+            )
+            f1 = round(f1_score(data_test_device.y.cpu(), predictions_test.cpu()), 4)
+
             return accuracy, precision, recall, f1
 
     def compute_loss(self, outputs, labels):
@@ -104,32 +110,41 @@ class CentralServer:
     def check_and_aggregate_models(self):
         print("LOGGER-INFO: check_and_aggregate_models() is called")
         # 检查队列中是否有足够的模型进行聚合
-        start_time = time.time()
-        max_wait_time = 50  # 最大等待时间（秒）
         while True:
-            if self.local_models.qsize() >= 3:
+            if self.local_models.qsize() >= 1:
                 models_to_aggregate = []
                 self.lock.acquire()
                 try:
-                    for _ in range(3):
-                        models_to_aggregate.append(self.local_models.get())
+                    for _ in range(1):
+                        model_dict = self.local_models.get()
+                        models_to_aggregate.append(model_dict)
                 finally:
                     self.lock.release()
+
+                individual_accuracies = []
+                for model_dict in models_to_aggregate:
+                    for drone_id, model in model_dict.items():
+                        accuracy, _, _, _ = self.fed_evaluate(model, data_test_device)
+                        individual_accuracies.append(accuracy)
+                        print(f"Accuracy of model from drone {drone_id}: {accuracy}")
+
+                print("Individual accuracies: ", individual_accuracies)
+
                 self.aggregate_models(models_to_aggregate)
 
-                for drone_id, ip in self.drone_nodes.items():
-                    self.send_model(ip, "self.aggregated_global_model")
-
-                time.sleep(5)
                 accuracy, precision, recall, f1 = self.fed_evaluate(
                     self.aggregated_global_model, data_test_device
                 )
+                print(f"Aggregated model accuracy after aggregation: {accuracy}")
+
                 self.aggregation_accuracies.append(accuracy)
                 self.num_aggregations += 1  # 增加模型聚合的次数
-                print("Current aggregation accuracy: ", accuracy)
+                print("Aggregation accuracies so far: ", self.aggregation_accuracies)
 
+                for drone_id, ip in self.drone_nodes.items():
+                    self.send_model(ip, "aggregated_global_model")
             # 当有10条记录就开始动态画图
-            if self.num_aggregations == 30:
+            if self.num_aggregations == 10:
                 plot_accuracy_vs_epoch(
                     self.aggregation_accuracies,
                     self.num_aggregations,
@@ -138,17 +153,11 @@ class CentralServer:
                 plt.savefig(
                     f"accuracy_vs_epoch_{self.num_aggregations}_aggregration method {self.aggregation_method}.png"
                 )
-                print("Aggregation accuracies so far: ", self.aggregation_accuracies)
+
                 print("Program is about to terminate")
                 sys.exit()  # Terminate the program
 
-            # 如果等待时间超过最大等待时间，退出循环
-            if time.time() - start_time > max_wait_time:
-                print("Max wait time exceeded, exiting")
-                break
-
     def initialize_global_model(self):
-        torch.manual_seed(0)
         num_epochs = 10
         num_output_features = 2
         learning_rate = 0.02
@@ -170,14 +179,19 @@ class CentralServer:
                 predictions_test = self.to_predictions(outputs_test)
 
                 # Calculate metrics
-                accuracy = accuracy_score(
-                    data_test_device.y.cpu(), predictions_test.cpu()
+                accuracy = round(
+                    accuracy_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
                 )
-                precision = precision_score(
-                    data_test_device.y.cpu(), predictions_test.cpu()
+                precision = round(
+                    precision_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
                 )
-                recall = recall_score(data_test_device.y.cpu(), predictions_test.cpu())
-                f1 = f1_score(data_test_device.y.cpu(), predictions_test.cpu())
+                recall = round(
+                    recall_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
+                )
+                f1 = round(
+                    f1_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
+                )
+
                 return accuracy, precision, recall, f1
 
         # 训练模型并记录每个epoch的准确率
@@ -225,15 +239,12 @@ class CentralServer:
 
     def aggregate_models(self, models_to_aggregate):
         if self.aggregation_method == "async_weighted_average":
-            print("Using weighted average aggregation")
             aggregated_model = weighted_average_aggregation(
                 models_to_aggregate, self.reputation
             )
         elif self.aggregation_method == "average aggregation":
-            print("Using average aggregation")
             aggregated_model = average_aggregation(models_to_aggregate)
         else:  # 默认使用平均聚合
-            print("Using average aggregation")
             aggregated_model = average_aggregation(models_to_aggregate)
 
         self.aggregated_global_model = Net18(num_output_features).to(device)  # 创建新的模型实例
@@ -241,7 +252,7 @@ class CentralServer:
 
         # 保存全局模型到文件， 以pt形式保存
         torch.save(
-            self.aggregated_global_model.state_dict(), "aggregrated_global_model.pt"
+            self.aggregated_global_model.state_dict(), "aggregated_global_model.pt"
         )
 
     def send_model(self, ip, model_type="global_model"):
@@ -272,12 +283,12 @@ class CentralServer:
             global_model_serialized
         ).decode()
         # 发送模型到子节点服务器
-        print("发送全局模型-发送！--->" + ip)
+        # print("发送全局模型-发送！--->" + ip)
         response = requests.post(
             f"http://{ip}/receive_model",
             data={"model": global_model_serialized_base64},
         )
-        print("发送全局模型-成功！--->" + ip)
+        # print("发送全局模型-成功！--->" + ip)
         return json.dumps({"status": "success"})
 
     # "0.0.0.0"表示应用程序在所有可用网络接口上运行
@@ -310,10 +321,10 @@ class CentralServer:
             performance = float(request.form["performance"])
             # 更新声誉分数
             self.update_reputation(drone_id, performance)
-            print("reputation: " + str(self.reputation))
+            # print("reputation: " + str(self.reputation))
 
             self.local_models.put({drone_id: local_model})
-            print("local models: " + str(self.local_models))
+
             return jsonify({"status": "success"})
 
         app.run(host="localhost", port=port)
