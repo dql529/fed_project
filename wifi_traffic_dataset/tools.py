@@ -1,23 +1,44 @@
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+import torch
+
+torch.manual_seed(0)
 
 
-def plot_accuracy_vs_epoch(accuracies, num_epochs, learning_rate):
+def plot_accuracy_vs_epoch(
+    accuracies, individual_accuracies, num_epochs, learning_rate
+):
     # 定义一个函数，将y轴刻度转换为百分比格式，保留两位小数
     def to_percent(y, position):
         return f"{100*y:.2f}%"
 
     formatter = FuncFormatter(to_percent)
 
-    plt.figure(figsize=(10, 6))  # Set the figure size
+    plt.figure(figsize=(12, 8))  # Set the figure size to be larger
     plt.plot(
         range(1, num_epochs + 1),
         accuracies,
         marker="o",
         linestyle="-",
         color="b",
-        label="Accuracy",
-    )  # Plot accuracy
+        linewidth=2,  # Make the line wider
+        label="Aggregated Model Accuracy",
+    )  # Plot accuracy of the aggregated model
+
+    # Plot accuracy of each individual model
+    for i, acc_list in enumerate(
+        zip(*individual_accuracies)
+    ):  # Unpack the nested lists
+        plt.plot(
+            range(1, num_epochs + 1),
+            acc_list,
+            marker="o",
+            linestyle="--",  # Use dashed line
+            color="lightgrey",  # Use a lighter color
+            linewidth=1,  # Make the line thinner
+            label=f"Model {i+1} Accuracy",
+        )
+
     plt.xlabel("Epoch", fontsize=14)  # Set the label for the x-axis
     plt.ylabel("Accuracy", fontsize=14)  # Set the label for the y-axis
     plt.title("Accuracy vs. Epoch", fontsize=16)  # Set the title

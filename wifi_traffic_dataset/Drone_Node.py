@@ -55,8 +55,8 @@ class DroneNode:
 
         # 定义损失函数和优化器
 
-        num_epochs = 15
-        learning_rate = 0.02
+        num_epochs = 10
+        learning_rate = 0.01
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
 
         if self.local_model.num_output_features == 1:

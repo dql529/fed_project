@@ -54,7 +54,7 @@ class CentralServer:
         self.local_models = {}
         self.local_models = Queue()  # 使用队列来存储上传的模型
         self.lock = threading.Lock()  # 创建锁
-        self.aggregation_method = "average aggregation"
+        self.aggregation_method = "async weighted  aggregation"
         # self.aggregation_method = "average aggregation"
 
         self.drone_nodes = {}
@@ -63,6 +63,7 @@ class CentralServer:
         threading.Thread(target=self.check_and_aggregate_models).start()
 
     def fed_evaluate(self, model, data_test_device):
+        model.eval()
         with torch.no_grad():  # Do not calculate gradients to save memory
             outputs_test = model(data_test_device)
 
@@ -80,7 +81,6 @@ class CentralServer:
                 recall_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
             )
             f1 = round(f1_score(data_test_device.y.cpu(), predictions_test.cpu()), 4)
-
             return accuracy, precision, recall, f1
 
     def compute_loss(self, outputs, labels):
@@ -109,13 +109,16 @@ class CentralServer:
 
     def check_and_aggregate_models(self):
         print("LOGGER-INFO: check_and_aggregate_models() is called")
+        start_time = time.time()
+        all_individual_accuracies = []
+        aggregation_times = []
         # 检查队列中是否有足够的模型进行聚合
         while True:
-            if self.local_models.qsize() >= 1:
+            if self.local_models.qsize() >= 3:
                 models_to_aggregate = []
                 self.lock.acquire()
                 try:
-                    for _ in range(1):
+                    for _ in range(3):
                         model_dict = self.local_models.get()
                         models_to_aggregate.append(model_dict)
                 finally:
@@ -124,17 +127,24 @@ class CentralServer:
                 individual_accuracies = []
                 for model_dict in models_to_aggregate:
                     for drone_id, model in model_dict.items():
-                        accuracy, _, _, _ = self.fed_evaluate(model, data_test_device)
+                        accuracy, precision, recall, f1 = self.fed_evaluate(
+                            model, data_test_device
+                        )
                         individual_accuracies.append(accuracy)
                         print(f"Accuracy of model from drone {drone_id}: {accuracy}")
 
                 print("Individual accuracies: ", individual_accuracies)
 
+                all_individual_accuracies.append(individual_accuracies)
+
                 self.aggregate_models(models_to_aggregate)
+
+                aggregation_times.append(time.time())
 
                 accuracy, precision, recall, f1 = self.fed_evaluate(
                     self.aggregated_global_model, data_test_device
                 )
+
                 print(f"Aggregated model accuracy after aggregation: {accuracy}")
 
                 self.aggregation_accuracies.append(accuracy)
@@ -143,24 +153,42 @@ class CentralServer:
 
                 for drone_id, ip in self.drone_nodes.items():
                     self.send_model(ip, "aggregated_global_model")
+
             # 当有10条记录就开始动态画图
-            if self.num_aggregations == 10:
+            if self.num_aggregations == 4:
+                end_time = time.time()  # 记录结束时间
+                print(
+                    f"Total time for aggregation: {end_time - start_time} seconds"
+                )  # 打印执行时间
+
+                # Find the time of the aggregation with the highest accuracy
+                max_accuracy_index = self.aggregation_accuracies.index(
+                    max(self.aggregation_accuracies)
+                )
+                max_accuracy_time = aggregation_times[max_accuracy_index]
+                print(
+                    f"Time of the aggregation with the highest accuracy: {max_accuracy_time - start_time} seconds"
+                )
+
                 plot_accuracy_vs_epoch(
                     self.aggregation_accuracies,
+                    all_individual_accuracies,
                     self.num_aggregations,
                     learning_rate=0.02,
                 )
+
                 plt.savefig(
                     f"accuracy_vs_epoch_{self.num_aggregations}_aggregration method {self.aggregation_method}.png"
                 )
 
                 print("Program is about to terminate")
+
                 sys.exit()  # Terminate the program
 
     def initialize_global_model(self):
-        num_epochs = 10
+        num_epochs = 15
         num_output_features = 2
-        learning_rate = 0.02
+        learning_rate = 0.01
         model = Net18(num_output_features).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
