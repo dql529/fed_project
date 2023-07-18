@@ -1,8 +1,17 @@
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import torch
+import numpy as np
 
 torch.manual_seed(0)
+
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+
+def exponential_decay(x, a=0.8):
+    return np.exp(-a * x)
 
 
 def plot_accuracy_vs_epoch(

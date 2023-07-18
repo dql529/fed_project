@@ -16,7 +16,7 @@ from queue import Queue
 from aggregation_solution import weighted_average_aggregation, average_aggregation
 import threading
 import json
-from tools import plot_accuracy_vs_epoch
+from tools import plot_accuracy_vs_epoch, sigmoid, exponential_decay
 from matplotlib import pyplot as plt
 import logging
 import sys
@@ -55,7 +55,6 @@ class CentralServer:
         self.local_models = Queue()  # 使用队列来存储上传的模型
         self.lock = threading.Lock()  # 创建锁
         self.aggregation_method = "async weighted  aggregation"
-        # self.aggregation_method = "average aggregation"
 
         self.drone_nodes = {}
         self.aggregation_accuracies = []
@@ -152,10 +151,10 @@ class CentralServer:
                 print("Aggregation accuracies so far: ", self.aggregation_accuracies)
 
                 for drone_id, ip in self.drone_nodes.items():
-                    self.send_model(ip, "aggregated_global_model")
+                    self.send_model_thread(ip, "aggregated_global_model")
 
             # 当有10条记录就开始动态画图
-            if self.num_aggregations == 4:
+            if self.num_aggregations == 10:
                 end_time = time.time()  # 记录结束时间
                 print(
                     f"Total time for aggregation: {end_time - start_time} seconds"
@@ -175,10 +174,6 @@ class CentralServer:
                     all_individual_accuracies,
                     self.num_aggregations,
                     learning_rate=0.02,
-                )
-
-                plt.savefig(
-                    f"accuracy_vs_epoch_{self.num_aggregations}_aggregration method {self.aggregation_method}.png"
                 )
 
                 print("Program is about to terminate")
@@ -318,6 +313,16 @@ class CentralServer:
         )
         # print("发送全局模型-成功！--->" + ip)
         return json.dumps({"status": "success"})
+
+    # def compute_reputation(self, performance, data_age):
+    # # 根据新的定义计算声誉
+    #     performance_contribution = sigmoid(performance)
+    #     data_age_contribution = exponential_decay(data_age)
+    #     reputation = performance_contribution * 0.8 + data_age_contribution * 0.2
+    #     return round(reputation, 4)
+
+    def send_model_thread(self, ip, model_type="aggregated_global_model"):
+        threading.Thread(target=self.send_model, args=(ip, model_type)).start()
 
     # "0.0.0.0"表示应用程序在所有可用网络接口上运行
     def run(self, port=5000):

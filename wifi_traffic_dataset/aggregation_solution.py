@@ -4,7 +4,7 @@ torch.manual_seed(0)
 
 
 def weighted_average_aggregation(models_to_aggregate, reputations):
-    print(" weighted_average_aggregation used")
+    print(" reputation used")
     total_reputation = sum(reputations.values())
     weighted_models = []
 
@@ -37,7 +37,7 @@ def average_aggregation(models_to_aggregate):
     aggregated_model = {}
 
     for model_dict in models_to_aggregate:
-        for drone_id, local_model in model_dict.items():
+        for _, local_model in model_dict.items():
             if not aggregated_model:
                 aggregated_model = {
                     k: v / num_models for k, v in local_model.state_dict().items()
