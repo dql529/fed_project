@@ -20,7 +20,7 @@ from Dataset import n_nodes
 from tools import plot_accuracy_vs_epoch
 import copy
 
-os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
+
 
 torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -55,7 +55,7 @@ class DroneNode:
 
         # 定义损失函数和优化器
 
-        num_epochs = 10
+        num_epochs = 15
         learning_rate = 0.01
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
 

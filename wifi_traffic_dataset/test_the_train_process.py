@@ -12,72 +12,72 @@ from time import sleep
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from torch_geometric.data import Data
 import pandas as pd
-
+import copy
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(0)
 
 # 定义输出维度
 num_output_features = 2
-num_epochs = 30
+num_epochs = 20
 learning_rate = 0.02
 model = Net18(num_output_features).to(device)
 
-df_train = pd.read_csv("./train.csv", sep=" ")
-df_test = pd.read_csv("./test.csv", sep=" ")
+# df_train = pd.read_csv("./train.csv", sep=" ")
+# df_test = pd.read_csv("./test.csv", sep=" ")
 
-train_features = df_train.iloc[:, :18]
-train_labels = df_train.iloc[:, 18]
-test_features = df_test.iloc[:, :18]
-test_labels = df_test.iloc[:, 18]
+# train_features = df_train.iloc[:, :18]
+# train_labels = df_train.iloc[:, 18]
+# test_features = df_test.iloc[:, :18]
+# test_labels = df_test.iloc[:, 18]
 
-# local_data = torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32)
-# local_targets = torch.tensor(train_labels.values.reshape(-1,1), dtype=torch.float32)
+# # local_data = torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32)
+# # local_targets = torch.tensor(train_labels.values.reshape(-1,1), dtype=torch.float32)
 
 
-# Define the adjacency matrix for the feature computational dependencies
-adjacency_matrix = torch.tensor(
-    [
-        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    ],
-    dtype=torch.float,
-)
-# Convert the adjacency matrix to edge index format
-edges = adjacency_matrix.nonzero(as_tuple=False).t()
-data = Data(
-    x=torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32),
-    edge_index=edges,
-    y=torch.tensor(train_labels.values.reshape(-1, 1), dtype=torch.float32),
-)
-data_test = Data(
-    x=torch.tensor(test_features.values.reshape(-1, 18), dtype=torch.float32),
-    edge_index=edges,
-    y=torch.tensor(test_labels.values.reshape(-1, 1), dtype=torch.float32),
-)
+# # Define the adjacency matrix for the feature computational dependencies
+# adjacency_matrix = torch.tensor(
+#     [
+#         [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+#     ],
+#     dtype=torch.float,
+# )
+# # Convert the adjacency matrix to edge index format
+# edges = adjacency_matrix.nonzero(as_tuple=False).t()
+# data = Data(
+#     x=torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32),
+#     edge_index=edges,
+#     y=torch.tensor(train_labels.values.reshape(-1, 1), dtype=torch.float32),
+# )
+# data_test = Data(
+#     x=torch.tensor(test_features.values.reshape(-1, 18), dtype=torch.float32),
+#     edge_index=edges,
+#     y=torch.tensor(test_labels.values.reshape(-1, 1), dtype=torch.float32),
+# )
 
 
 # 另外一种使用数据集的方式  选择拆分过后的数据集。
-# server_train = torch.load("data_object/server_train.pt")
-# server_test = torch.load("data_object/server_test.pt")
+server_train = torch.load("data_object/server_train.pt")
+server_test = torch.load("data_object/server_test.pt")
 # 写法和drone node.py有区别   Drone node 中定义在clss中，根据self来调用，此处为了方便，直接定义在函数中
-data_device = data.to(device)
-data_test_device = data_test.to(device)
+data_device = server_train.to(device)
+data_test_device = server_test.to(device)
 # 训练参数
 # 定义损失函数和优化器
 
@@ -146,6 +146,8 @@ import matplotlib.pyplot as plt
 
 # 训练模型并记录每个epoch的准确率
 accuracies = []
+best_accuracy = 0.0
+best_model_state_dict = None
 for epoch in range(num_epochs):
     model.train()  # Set the model to training mode
     outputs = model(data_device)
@@ -164,6 +166,20 @@ for epoch in range(num_epochs):
     print(f"Precision: {precision}")
     print(f"Recall: {recall}")
     print(f"F1 Score: {f1}")
+    if accuracy > best_accuracy:
+        best_accuracy = accuracy
+        best_model_state_dict = copy.deepcopy(model.state_dict())
+# After training, load the best model weights
+model.load_state_dict(best_model_state_dict)
+# Save the best model to a file
+torch.save(model.state_dict(), "global_model.pt")
+# Find the maximum accuracy and its corresponding epoch
+max_accuracy = max(accuracies)
+max_epoch = accuracies.index(max_accuracy) + 1
+# Print the coordinates of the maximum point
+print(
+    f"learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
+)
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter

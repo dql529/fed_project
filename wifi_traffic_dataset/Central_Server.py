@@ -23,23 +23,24 @@ import sys
 
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
-os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
-
 torch.manual_seed(0)
 # 读取数据
 server_train = torch.load("data_object/server_train.pt")
 server_test = torch.load("data_object/server_test.pt")
 num_output_features = 2
-if num_output_features == 1:
-    criterion = nn.BCEWithLogitsLoss()
-elif num_output_features == 2:
-    criterion = nn.CrossEntropyLoss()
-else:
-    raise ValueError(
-        "Invalid number of output features: {}".format(num_output_features)
-    )
+criterion = nn.CrossEntropyLoss()
+# if num_output_features == 1:
+#     criterion = nn.BCEWithLogitsLoss()
+# elif num_output_features == 2:
+#     criterion = nn.CrossEntropyLoss()
+
+
+# else:
+#     raise ValueError(
+#         "Invalid number of output features: {}".format(num_output_features)
+#     )
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-num_output_features = 2
+
 
 # 写法和drone node.py有区别   Drone node 中定义在clss中，根据self来调用，此处为了方便，直接定义在函数中
 data_device = server_train.to(device)
@@ -59,7 +60,7 @@ class CentralServer:
         self.drone_nodes = {}
         self.aggregation_accuracies = []
         self.num_aggregations = 0  # 记录聚合次数
-        threading.Thread(target=self.check_and_aggregate_models).start()
+        #threading.Thread(target=self.check_and_aggregate_models).start()
 
     def fed_evaluate(self, model, data_test_device):
         model.eval()
@@ -95,17 +96,17 @@ class CentralServer:
             )
 
     def to_predictions(self, outputs):
-        if self.global_model.num_output_features == 1:
-            return (torch.sigmoid(outputs) > 0.5).float()
-        elif self.global_model.num_output_features == 2:
-            return outputs.argmax(dim=1)
-        else:
-            raise ValueError(
-                "Invalid number of output features: {}".format(
-                    self.global_model.num_output_features
-                )
-            )
-
+        # if self.global_model.num_output_features == 1:
+        #     return (torch.sigmoid(outputs) > 0.5).float()
+        # elif self.global_model.num_output_features == 2:
+        #     return outputs.argmax(dim=1)
+        # else:
+        #     raise ValueError(
+        #         "Invalid number of output features: {}".format(
+        #             self.global_model.num_output_features
+        #         )
+        #     )
+        return outputs.argmax(dim=1)
     def check_and_aggregate_models(self):
         print("LOGGER-INFO: check_and_aggregate_models() is called")
         start_time = time.time()
@@ -181,9 +182,8 @@ class CentralServer:
                 sys.exit()  # Terminate the program
 
     def initialize_global_model(self):
-        num_epochs = 15
-        num_output_features = 2
-        learning_rate = 0.01
+        num_epochs = 20
+        learning_rate = 0.02
         model = Net18(num_output_features).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -202,20 +202,12 @@ class CentralServer:
                 predictions_test = self.to_predictions(outputs_test)
 
                 # Calculate metrics
-                accuracy = round(
-                    accuracy_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
-                )
-                precision = round(
-                    precision_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
-                )
-                recall = round(
-                    recall_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
-                )
-                f1 = round(
-                    f1_score(data_test_device.y.cpu(), predictions_test.cpu()), 4
-                )
-
+                accuracy = accuracy_score(data_test_device.y.cpu(), predictions_test.cpu())
+                precision = precision_score(data_test_device.y.cpu(), predictions_test.cpu())
+                recall = recall_score(data_test_device.y.cpu(), predictions_test.cpu())
+                f1 = f1_score(data_test_device.y.cpu(), predictions_test.cpu())
                 return accuracy, precision, recall, f1
+
 
         # 训练模型并记录每个epoch的准确率
         accuracies = []
