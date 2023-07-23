@@ -21,28 +21,18 @@ from matplotlib import pyplot as plt
 import logging
 import sys
 
+torch.manual_seed(0)
+os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
-torch.manual_seed(0)
+learning_rate = 0.01
+num_output_features = 2
+criterion = nn.CrossEntropyLoss()
+
 # 读取数据
 server_train = torch.load("data_object/server_train.pt")
 server_test = torch.load("data_object/server_test.pt")
-num_output_features = 2
-criterion = nn.CrossEntropyLoss()
-# if num_output_features == 1:
-#     criterion = nn.BCEWithLogitsLoss()
-# elif num_output_features == 2:
-#     criterion = nn.CrossEntropyLoss()
-
-
-# else:
-#     raise ValueError(
-#         "Invalid number of output features: {}".format(num_output_features)
-#     )
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-# 写法和drone node.py有区别   Drone node 中定义在clss中，根据self来调用，此处为了方便，直接定义在函数中
 data_device = server_train.to(device)
 data_test_device = server_test.to(device)
 
@@ -60,7 +50,7 @@ class CentralServer:
         self.drone_nodes = {}
         self.aggregation_accuracies = []
         self.num_aggregations = 0  # 记录聚合次数
-        #threading.Thread(target=self.check_and_aggregate_models).start()
+        # threading.Thread(target=self.check_and_aggregate_models).start()
 
     def fed_evaluate(self, model, data_test_device):
         model.eval()
@@ -84,16 +74,17 @@ class CentralServer:
             return accuracy, precision, recall, f1
 
     def compute_loss(self, outputs, labels):
-        if self.global_model.num_output_features == 1:
-            return criterion(outputs, labels)
-        elif self.global_model.num_output_features == 2:
-            return criterion(outputs, labels.squeeze().long())
-        else:
-            raise ValueError(
-                "Invalid number of output features: {}".format(
-                    self.global_model.num_output_features
-                )
-            )
+        # if self.global_model.num_output_features == 1:
+        #     return criterion(outputs, labels)
+        # elif self.global_model.num_output_features == 2:
+        #     return criterion(outputs, labels.squeeze().long())
+        # else:
+        #     raise ValueError(
+        #         "Invalid number of output features: {}".format(
+        #             self.global_model.num_output_features
+        #         )
+        #     )
+        return criterion(outputs, labels.squeeze().long())
 
     def to_predictions(self, outputs):
         # if self.global_model.num_output_features == 1:
@@ -107,7 +98,9 @@ class CentralServer:
         #         )
         #     )
         return outputs.argmax(dim=1)
+
     def check_and_aggregate_models(self):
+        torch.manual_seed(0)
         print("LOGGER-INFO: check_and_aggregate_models() is called")
         start_time = time.time()
         all_individual_accuracies = []
@@ -182,8 +175,8 @@ class CentralServer:
                 sys.exit()  # Terminate the program
 
     def initialize_global_model(self):
-        num_epochs = 20
-        learning_rate = 0.02
+        num_epochs = 15
+
         model = Net18(num_output_features).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -194,30 +187,62 @@ class CentralServer:
         else:
             print(f"Using device: {device}")
 
+        def compute_loss(outputs, labels):
+            if model.num_output_features == 1:
+                return criterion(outputs, labels)
+            elif model.num_output_features == 2:
+                return criterion(outputs, labels.squeeze().long())
+            else:
+                raise ValueError(
+                    "Invalid number of output features: {}".format(
+                        model.num_output_features
+                    )
+                )
+
+        # Convert the model's output probabilities to binary predictions
+        def to_predictions(outputs):
+            if model.num_output_features == 1:
+                return (torch.sigmoid(outputs) > 0.5).float()
+            elif model.num_output_features == 2:
+                return outputs.argmax(dim=1)
+            else:
+                raise ValueError(
+                    "Invalid number of output features: {}".format(
+                        model.num_output_features
+                    )
+                )
+
+                # Evaluate the model on the test data
+
         def evaluate(data_test_device):
             model.eval()  # Set the model to evaluation mode
             with torch.no_grad():  # Do not calculate gradients to save memory
                 outputs_test = model(data_test_device)
 
-                predictions_test = self.to_predictions(outputs_test)
+                predictions_test = to_predictions(outputs_test)
 
                 # Calculate metrics
-                accuracy = accuracy_score(data_test_device.y.cpu(), predictions_test.cpu())
-                precision = precision_score(data_test_device.y.cpu(), predictions_test.cpu())
+                accuracy = accuracy_score(
+                    data_test_device.y.cpu(), predictions_test.cpu()
+                )
+                precision = precision_score(
+                    data_test_device.y.cpu(), predictions_test.cpu()
+                )
                 recall = recall_score(data_test_device.y.cpu(), predictions_test.cpu())
                 f1 = f1_score(data_test_device.y.cpu(), predictions_test.cpu())
                 return accuracy, precision, recall, f1
 
-
         # 训练模型并记录每个epoch的准确率
         accuracies = []
+
         best_accuracy = 0.0
+
         best_model_state_dict = None
         for epoch in range(num_epochs):
             model.train()  # Set the model to training mode
             outputs = model(data_device)
 
-            loss = self.compute_loss(outputs, data_device.y)
+            loss = compute_loss(outputs, data_device.y)
 
             optimizer.zero_grad()
             loss.backward()
@@ -277,13 +302,14 @@ class CentralServer:
         else:  # 默认加载 global_model
             model_path = "global_model.pt"
 
-        # 加载模型
-        try:
+        # 检查模型是否已经存在
+        if os.path.isfile(model_path):
+            # 加载模型
             self.global_model = Net18(num_output_features).to(device)
-            # 先生成模型，再加载训练好的模型
             self.global_model.load_state_dict(torch.load(model_path))
             print(f"本地存在 {model_type}，发送中…… ")
-        except Exception as e:
+        else:
+            # 训练新模型
             print(f"本地不存在 {model_type}，训练中……")
             self.initialize_global_model()
 
@@ -306,12 +332,12 @@ class CentralServer:
         # print("发送全局模型-成功！--->" + ip)
         return json.dumps({"status": "success"})
 
-    # def compute_reputation(self, performance, data_age):
-    # # 根据新的定义计算声誉
-    #     performance_contribution = sigmoid(performance)
-    #     data_age_contribution = exponential_decay(data_age)
-    #     reputation = performance_contribution * 0.8 + data_age_contribution * 0.2
-    #     return round(reputation, 4)
+    def compute_reputation(self, performance, data_age):
+        # 根据新的定义计算声誉
+        performance_contribution = sigmoid(performance)
+        data_age_contribution = exponential_decay(data_age)
+        reputation = performance_contribution * 0.8 + data_age_contribution * 0.2
+        return round(reputation, 4)
 
     def send_model_thread(self, ip, model_type="aggregated_global_model"):
         threading.Thread(target=self.send_model, args=(ip, model_type)).start()
@@ -319,6 +345,7 @@ class CentralServer:
     # "0.0.0.0"表示应用程序在所有可用网络接口上运行
     def run(self, port=5000):
         app = Flask(__name__)
+        print(criterion)
 
         @app.route("/health_check", methods=["GET"])
         def health_check():
@@ -331,7 +358,7 @@ class CentralServer:
             print("接收到新节点,id:" + drone_id + ",ip:" + ip)
             # 将新的无人机节点添加到字典中
             self.drone_nodes[drone_id] = ip
-
+            # self.initialize_global_model()
             print("发送全局模型-执行中--->" + ip)
             self.send_model(ip, "global_model")
             return jsonify({"status": "success"})

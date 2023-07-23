@@ -20,7 +20,7 @@ from Dataset import n_nodes
 from tools import plot_accuracy_vs_epoch
 import copy
 
-
+os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
 
 torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -226,6 +226,7 @@ class DroneNode:
         
         
         """
+        torch.manual_seed(0)
         self.data_device = torch.load(f"data_object/node_train_{drone_id}.pt").to(
             device
         )

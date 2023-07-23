@@ -13,66 +13,18 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from torch_geometric.data import Data
 import pandas as pd
 import copy
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(0)
 
 # 定义输出维度
 num_output_features = 2
-num_epochs = 20
-learning_rate = 0.02
+num_epochs = 15
+learning_rate = 0.01
 model = Net18(num_output_features).to(device)
+num_output_features = 2
+criterion = nn.CrossEntropyLoss()
 
-# df_train = pd.read_csv("./train.csv", sep=" ")
-# df_test = pd.read_csv("./test.csv", sep=" ")
-
-# train_features = df_train.iloc[:, :18]
-# train_labels = df_train.iloc[:, 18]
-# test_features = df_test.iloc[:, :18]
-# test_labels = df_test.iloc[:, 18]
-
-# # local_data = torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32)
-# # local_targets = torch.tensor(train_labels.values.reshape(-1,1), dtype=torch.float32)
-
-
-# # Define the adjacency matrix for the feature computational dependencies
-# adjacency_matrix = torch.tensor(
-#     [
-#         [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-#         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-#     ],
-#     dtype=torch.float,
-# )
-# # Convert the adjacency matrix to edge index format
-# edges = adjacency_matrix.nonzero(as_tuple=False).t()
-# data = Data(
-#     x=torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32),
-#     edge_index=edges,
-#     y=torch.tensor(train_labels.values.reshape(-1, 1), dtype=torch.float32),
-# )
-# data_test = Data(
-#     x=torch.tensor(test_features.values.reshape(-1, 18), dtype=torch.float32),
-#     edge_index=edges,
-#     y=torch.tensor(test_labels.values.reshape(-1, 1), dtype=torch.float32),
-# )
-
-
-# 另外一种使用数据集的方式  选择拆分过后的数据集。
 server_train = torch.load("data_object/server_train.pt")
 server_test = torch.load("data_object/server_test.pt")
 # 写法和drone node.py有区别   Drone node 中定义在clss中，根据self来调用，此处为了方便，直接定义在函数中
@@ -82,14 +34,7 @@ data_test_device = server_test.to(device)
 # 定义损失函数和优化器
 
 
-if model.num_output_features == 1:
-    criterion = nn.BCEWithLogitsLoss()
-elif model.num_output_features == 2:
-    criterion = nn.CrossEntropyLoss()
-else:
-    raise ValueError(
-        "Invalid number of output features: {}".format(model.num_output_features)
-    )
+criterion = nn.CrossEntropyLoss()
 
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -172,7 +117,7 @@ for epoch in range(num_epochs):
 # After training, load the best model weights
 model.load_state_dict(best_model_state_dict)
 # Save the best model to a file
-torch.save(model.state_dict(), "global_model.pt")
+# torch.save(model.state_dict(), "global_model.pt")
 # Find the maximum accuracy and its corresponding epoch
 max_accuracy = max(accuracies)
 max_epoch = accuracies.index(max_accuracy) + 1
@@ -181,59 +126,59 @@ print(
     f"learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
 )
 
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
+# import matplotlib.pyplot as plt
+# from matplotlib.ticker import FuncFormatter
 
 
-# 定义一个函数，将y轴刻度转换为百分比格式，保留两位小数
-def to_percent(y, position):
-    return f"{100*y:.2f}%"
+# # 定义一个函数，将y轴刻度转换为百分比格式，保留两位小数
+# def to_percent(y, position):
+#     return f"{100*y:.2f}%"
 
 
-formatter = FuncFormatter(to_percent)
+# formatter = FuncFormatter(to_percent)
 
-plt.figure(figsize=(10, 6))  # Set the figure size
-plt.plot(
-    range(1, num_epochs + 1),
-    accuracies,
-    marker="o",
-    linestyle="-",
-    color="b",
-    label="Accuracy",
-)  # Plot accuracy
-plt.xlabel("Epoch", fontsize=14)  # Set the label for the x-axis
-plt.ylabel("Accuracy", fontsize=14)  # Set the label for the y-axis
-plt.title("Accuracy vs. Epoch", fontsize=16)  # Set the title
-plt.grid(True)  # Add grid lines
-plt.legend(fontsize=12)  # Add a legend
-plt.xticks(fontsize=12)  # Set the size of the x-axis ticks
-plt.yticks(fontsize=12)  # Set the size of the y-axis ticks
-plt.gca().yaxis.set_major_formatter(formatter)  # Set the formatter for the y-axis
-plt.xlim([1, num_epochs])  # Set the range of the x-axis
-plt.ylim([0, 1])  # Set the range of the y-axis
+# plt.figure(figsize=(10, 6))  # Set the figure size
+# plt.plot(
+#     range(1, num_epochs + 1),
+#     accuracies,
+#     marker="o",
+#     linestyle="-",
+#     color="b",
+#     label="Accuracy",
+# )  # Plot accuracy
+# plt.xlabel("Epoch", fontsize=14)  # Set the label for the x-axis
+# plt.ylabel("Accuracy", fontsize=14)  # Set the label for the y-axis
+# plt.title("Accuracy vs. Epoch", fontsize=16)  # Set the title
+# plt.grid(True)  # Add grid lines
+# plt.legend(fontsize=12)  # Add a legend
+# plt.xticks(fontsize=12)  # Set the size of the x-axis ticks
+# plt.yticks(fontsize=12)  # Set the size of the y-axis ticks
+# plt.gca().yaxis.set_major_formatter(formatter)  # Set the formatter for the y-axis
+# plt.xlim([1, num_epochs])  # Set the range of the x-axis
+# plt.ylim([0, 1])  # Set the range of the y-axis
 
-# Find the maximum accuracy and its corresponding epoch
-max_accuracy = max(accuracies)
-max_epoch = accuracies.index(max_accuracy) + 1
+# # Find the maximum accuracy and its corresponding epoch
+# max_accuracy = max(accuracies)
+# max_epoch = accuracies.index(max_accuracy) + 1
 
-# Print the coordinates of the maximum point
-print(
-    f"learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
-)
-
-
-# Annotate the maximum point
-plt.annotate(
-    f"Max Accuracy: {100*max_accuracy:.2f}%",
-    xy=(max_epoch, max_accuracy),
-    xytext=(max_epoch + 5, max_accuracy - 0.1),
-    arrowprops=dict(facecolor="red", shrink=0.05),
-)
-
-plt.show()
+# # Print the coordinates of the maximum point
+# print(
+#     f"learning rate {learning_rate}, epoch {num_epochs} and dimension {model.num_output_features},Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
+# )
 
 
-import os
+# # Annotate the maximum point
+# plt.annotate(
+#     f"Max Accuracy: {100*max_accuracy:.2f}%",
+#     xy=(max_epoch, max_accuracy),
+#     xytext=(max_epoch + 5, max_accuracy - 0.1),
+#     arrowprops=dict(facecolor="red", shrink=0.05),
+# )
 
-# 按照学习率，维度，epoch给模型命名
-model_name = f"{learning_rate}_{model.num_output_features}_{num_epochs}_{100*max_accuracy:.2f}.pt"
+# plt.show()
+
+
+# import os
+
+# # 按照学习率，维度，epoch给模型命名
+# model_name = f"{learning_rate}_{model.num_output_features}_{num_epochs}_{100*max_accuracy:.2f}.pt"
