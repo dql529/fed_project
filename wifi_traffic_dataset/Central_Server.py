@@ -46,11 +46,12 @@ class CentralServer:
         self.local_models = Queue()  # 使用队列来存储上传的模型
         self.lock = threading.Lock()  # 创建锁
         self.aggregation_method = "async weighted  aggregation"
-
+        self.new_model_event = threading.Event()
         self.drone_nodes = {}
         self.aggregation_accuracies = []
         self.num_aggregations = 0  # 记录聚合次数
-        # threading.Thread(target=self.check_and_aggregate_models).start()
+        self.data_age = {}
+        threading.Thread(target=self.check_and_aggregate_models).start()
 
     def fed_evaluate(self, model, data_test_device):
         model.eval()
@@ -99,7 +100,7 @@ class CentralServer:
         #     )
         return outputs.argmax(dim=1)
 
-    def check_and_aggregate_models(self):
+    def check_and_aggregate_models(self, use_reputation=True):
         torch.manual_seed(0)
         print("LOGGER-INFO: check_and_aggregate_models() is called")
         start_time = time.time()
@@ -107,13 +108,48 @@ class CentralServer:
         aggregation_times = []
         # 检查队列中是否有足够的模型进行聚合
         while True:
-            if self.local_models.qsize() >= 3:
+            self.new_model_event.wait()
+            if self.local_models.qsize() >= 5:
                 models_to_aggregate = []
                 self.lock.acquire()
                 try:
-                    for _ in range(3):
-                        model_dict = self.local_models.get()
-                        models_to_aggregate.append(model_dict)
+                    if use_reputation:
+                        # 获取所有模型和它们的声誉
+                        all_models = [self.local_models.get() for _ in range(5)]
+                        all_reputations = [
+                            self.reputation[drone_id]
+                            for model_dict in all_models
+                            for drone_id in model_dict
+                        ]
+                        # 根据声誉排序模型
+                        sorted_indices = sorted(
+                            range(len(all_reputations)),
+                            key=lambda i: all_reputations[i],
+                            reverse=True,
+                        )
+                        # 选择声誉最高的3个模型
+                        models_to_aggregate = [
+                            all_models[i] for i in sorted_indices[:3]
+                        ]
+
+                        # 打印每轮的所有节点声誉
+                        print("                   ")
+                        print(f"Current reputations: {self.reputation}")
+
+                        # 打印参与聚合的节点
+                        aggregated_node_ids = [
+                            list(model_dict.keys())[0]
+                            for model_dict in models_to_aggregate
+                        ]
+                        print(
+                            f"Nodes participating in aggregation: {aggregated_node_ids}"
+                        )
+
+                    else:
+                        # 如果不使用声誉，那么就选择所有的模型
+                        for _ in range(5):
+                            model_dict = self.local_models.get()
+                            models_to_aggregate.append(model_dict)
                 finally:
                     self.lock.release()
 
@@ -130,7 +166,13 @@ class CentralServer:
 
                 all_individual_accuracies.append(individual_accuracies)
 
-                self.aggregate_models(models_to_aggregate)
+                self.lock.acquire()  # Acquire lock before aggregation
+                try:
+                    self.aggregate_models(
+                        models_to_aggregate, use_reputation=use_reputation
+                    )
+                finally:
+                    self.lock.release()
 
                 aggregation_times.append(time.time())
 
@@ -148,7 +190,7 @@ class CentralServer:
                     self.send_model_thread(ip, "aggregated_global_model")
 
             # 当有10条记录就开始动态画图
-            if self.num_aggregations == 10:
+            if self.num_aggregations == 15:
                 end_time = time.time()  # 记录结束时间
                 print(
                     f"Total time for aggregation: {end_time - start_time} seconds"
@@ -173,6 +215,7 @@ class CentralServer:
                 print("Program is about to terminate")
 
                 sys.exit()  # Terminate the program
+            self.new_model_event.clear()
 
     def initialize_global_model(self):
         num_epochs = 15
@@ -277,14 +320,12 @@ class CentralServer:
     def update_reputation(self, drone_id, new_reputation):
         self.reputation[drone_id] = new_reputation
 
-    def aggregate_models(self, models_to_aggregate):
-        if self.aggregation_method == "async_weighted_average":
+    def aggregate_models(self, models_to_aggregate, use_reputation=False):
+        if use_reputation:
             aggregated_model = weighted_average_aggregation(
                 models_to_aggregate, self.reputation
             )
-        elif self.aggregation_method == "average aggregation":
-            aggregated_model = average_aggregation(models_to_aggregate)
-        else:  # 默认使用平均聚合
+        else:
             aggregated_model = average_aggregation(models_to_aggregate)
 
         self.aggregated_global_model = Net18(num_output_features).to(device)  # 创建新的模型实例
@@ -299,45 +340,62 @@ class CentralServer:
         # 根据 model_type 加载不同的模型
         if model_type == "aggregated_global_model":
             model_path = "aggregated_global_model.pt"
+            buffer = io.BytesIO()
+            torch.save(self.aggregated_global_model.state_dict(), buffer)  # 修改这里
+
+            # Get the contents of the buffer
+            global_model_serialized = buffer.getvalue()
+
+            # Encode the bytes as a base64 string
+            global_model_serialized_base64 = base64.b64encode(
+                global_model_serialized
+            ).decode()
+            # 发送模型到子节点服务器
+            # print("发送全局模型-发送！--->" + ip)
+            response = requests.post(
+                f"http://{ip}/receive_model",
+                data={"model": global_model_serialized_base64},
+            )
+            # print("发送全局模型-成功！--->" + ip)
+            return json.dumps({"status": "success"})
         else:  # 默认加载 global_model
             model_path = "global_model.pt"
+            # 检查模型是否已经存在
+            if os.path.isfile(model_path):
+                # 加载模型
+                self.global_model = Net18(num_output_features).to(device)
+                self.global_model.load_state_dict(torch.load(model_path))
+                print(f"本地存在 {model_type}，发送中…… ")
+            else:
+                # 训练新模型
+                print(f"本地不存在 {model_type}，训练中……")
+                self.initialize_global_model()
 
-        # 检查模型是否已经存在
-        if os.path.isfile(model_path):
-            # 加载模型
-            self.global_model = Net18(num_output_features).to(device)
-            self.global_model.load_state_dict(torch.load(model_path))
-            print(f"本地存在 {model_type}，发送中…… ")
-        else:
-            # 训练新模型
-            print(f"本地不存在 {model_type}，训练中……")
-            self.initialize_global_model()
+            buffer = io.BytesIO()
+            torch.save(self.global_model.state_dict(), buffer)
 
-        buffer = io.BytesIO()
-        torch.save(self.global_model.state_dict(), buffer)
+            # Get the contents of the buffer
+            global_model_serialized = buffer.getvalue()
 
-        # Get the contents of the buffer
-        global_model_serialized = buffer.getvalue()
-
-        # Encode the bytes as a base64 string
-        global_model_serialized_base64 = base64.b64encode(
-            global_model_serialized
-        ).decode()
-        # 发送模型到子节点服务器
-        # print("发送全局模型-发送！--->" + ip)
-        response = requests.post(
-            f"http://{ip}/receive_model",
-            data={"model": global_model_serialized_base64},
-        )
-        # print("发送全局模型-成功！--->" + ip)
-        return json.dumps({"status": "success"})
+            # Encode the bytes as a base64 string
+            global_model_serialized_base64 = base64.b64encode(
+                global_model_serialized
+            ).decode()
+            # 发送模型到子节点服务器
+            # print("发送全局模型-发送！--->" + ip)
+            response = requests.post(
+                f"http://{ip}/receive_model",
+                data={"model": global_model_serialized_base64},
+            )
+            # print("发送全局模型-成功！--->" + ip)
+            return json.dumps({"status": "success"})
 
     def compute_reputation(self, performance, data_age):
         # 根据新的定义计算声誉
         performance_contribution = sigmoid(performance)
         data_age_contribution = exponential_decay(data_age)
-        reputation = performance_contribution * 0.8 + data_age_contribution * 0.2
-        return round(reputation, 4)
+        reputation = performance_contribution * 0.9 + data_age_contribution * 0.1
+        return performance
 
     def send_model_thread(self, ip, model_type="aggregated_global_model"):
         threading.Thread(target=self.send_model, args=(ip, model_type)).start()
@@ -371,11 +429,20 @@ class CentralServer:
             local_model_serialized = pickle.dumps(local_model)
 
             performance = float(request.form["performance"])
+
+            # 更新数据时效性标签
+            if drone_id in self.data_age:
+                self.data_age[drone_id] += 1
+            else:
+                self.data_age[drone_id] = 1
             # 更新声誉分数
-            self.update_reputation(drone_id, performance)
-            # print("reputation: " + str(self.reputation))
+            reputation = self.compute_reputation(performance, self.data_age[drone_id])
+
+            self.update_reputation(drone_id, reputation)
 
             self.local_models.put({drone_id: local_model})
+
+            self.new_model_event.set()
 
             return jsonify({"status": "success"})
 
