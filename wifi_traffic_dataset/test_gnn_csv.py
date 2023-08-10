@@ -15,17 +15,13 @@ import pandas as pd
 import copy
 import os
 
-os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(0)
 
 # 定义输出维度
 num_output_features = 2
-<<<<<<< HEAD
 num_epochs = 3000
-=======
-num_epochs = 1500
->>>>>>> 2128c28a583950e1f3e89ab35cee4adfd70e7a64
 learning_rate = 0.01
 model = Net18(num_output_features).to(device)
 num_output_features = 2
