@@ -13,13 +13,19 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from torch_geometric.data import Data
 import pandas as pd
 import copy
+import os
 
+os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(0)
 
 # 定义输出维度
 num_output_features = 2
+<<<<<<< HEAD
 num_epochs = 3000
+=======
+num_epochs = 1500
+>>>>>>> 2128c28a583950e1f3e89ab35cee4adfd70e7a64
 learning_rate = 0.01
 model = Net18(num_output_features).to(device)
 num_output_features = 2
@@ -31,9 +37,6 @@ train_features = df_train.iloc[:, :18]
 train_labels = df_train.iloc[:, 18]
 test_features = df_test.iloc[:, :18]
 test_labels = df_test.iloc[:, 18]
-
-# local_data = torch.tensor(train_features.values.reshape(-1, 18), dtype=torch.float32)
-# local_targets = torch.tensor(train_labels.values.reshape(-1,1), dtype=torch.float32)
 
 
 # Define the adjacency matrix for the feature computational dependencies
@@ -74,14 +77,8 @@ data_test = Data(
 )
 
 
-# # 另外一种使用数据集的方式  选择拆分过后的数据集。
-# server_train = torch.load("data_object/server_train.pt")
-# server_test = torch.load("data_object/server_test.pt")
-# # 写法和drone node.py有区别   Drone node 中定义在clss中，根据self来调用，此处为了方便，直接定义在函数中
 data_device = data.to(device)
 data_test_device = data_test.to(device)
-# 训练参数
-# 定义损失函数和优化器
 
 
 if model.num_output_features == 1:
