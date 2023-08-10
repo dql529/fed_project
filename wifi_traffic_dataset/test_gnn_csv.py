@@ -19,8 +19,8 @@ torch.manual_seed(0)
 
 # 定义输出维度
 num_output_features = 2
-num_epochs = 20
-learning_rate = 0.02
+num_epochs = 3000
+learning_rate = 0.01
 model = Net18(num_output_features).to(device)
 num_output_features = 2
 criterion = nn.CrossEntropyLoss()
