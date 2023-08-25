@@ -38,6 +38,7 @@ def plot_accuracy_vs_epoch(
     for i, acc_list in enumerate(
         zip(*individual_accuracies)
     ):  # Unpack the nested lists
+        label = f"Individual Model Accuracy" if i == 0 else None 
         plt.plot(
             range(1, num_epochs + 1),
             acc_list,
@@ -45,20 +46,20 @@ def plot_accuracy_vs_epoch(
             linestyle="--",  # Use dashed line
             color="lightgrey",  # Use a lighter color
             linewidth=1,  # Make the line thinner
-            label=f"Model {i+1} Accuracy",
+            label=label,
         )
 
     plt.xlabel("Epoch", fontsize=14)  # Set the label for the x-axis
     plt.ylabel("Accuracy", fontsize=14)  # Set the label for the y-axis
     plt.title("Accuracy vs. Epoch", fontsize=16)  # Set the title
     plt.grid(True)  # Add grid lines
-    plt.legend(fontsize=12)  # Add a legend
+    
     plt.xticks(fontsize=12)  # Set the size of the x-axis ticks
     plt.yticks(fontsize=12)  # Set the size of the y-axis ticks
     plt.gca().yaxis.set_major_formatter(formatter)  # Set the formatter for the y-axis
     plt.xlim([1, num_epochs])  # Set the range of the x-axis
-    plt.ylim([0, 1])  # Set the range of the y-axis
-
+    plt.ylim([0.4, 1])  # Set the range of the y-axis
+    plt.legend(loc='lower left', fontsize=12)
     # Find the maximum accuracy and its corresponding epoch
     max_accuracy = max(accuracies)
     max_epoch = accuracies.index(max_accuracy) + 1
@@ -73,7 +74,7 @@ def plot_accuracy_vs_epoch(
         f"Max Accuracy: {100*max_accuracy:.2f}%",
         xy=(max_epoch, max_accuracy),
         xytext=(max_epoch, max_accuracy - 0.1),
-        arrowprops=dict(facecolor="red", shrink=0.05),
+        arrowprops=dict(facecolor="red", shrink=0.1),
     )
 
     plt.show()

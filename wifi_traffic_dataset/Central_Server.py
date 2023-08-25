@@ -22,7 +22,7 @@ import logging
 import sys
 
 torch.manual_seed(0)
-os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
+# os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
 learning_rate = 0.01
@@ -50,7 +50,9 @@ class CentralServer:
         self.drone_nodes = {}
         self.aggregation_accuracies = []
         self.num_aggregations = 0  # 记录聚合次数
-        self.data_age = {}
+        self.data_age = {}      
+        self.low_performance_counts = {}
+
         threading.Thread(target=self.check_and_aggregate_models).start()
 
     def fed_evaluate(self, model, data_test_device):
@@ -106,16 +108,16 @@ class CentralServer:
         start_time = time.time()
         all_individual_accuracies = []
         aggregation_times = []
-        # 检查队列中是否有足够的模型进行聚合
+        # 检查队列中是否有足够的模型进行聚合·   
         while True:
             self.new_model_event.wait()
-            if self.local_models.qsize() >= 5:
+            if self.local_models.qsize() >= 2:
                 models_to_aggregate = []
                 self.lock.acquire()
                 try:
                     if use_reputation:
                         # 获取所有模型和它们的声誉
-                        all_models = [self.local_models.get() for _ in range(5)]
+                        all_models = [self.local_models.get() for _ in range(2)]
                         all_reputations = [
                             self.reputation[drone_id]
                             for model_dict in all_models
@@ -129,7 +131,7 @@ class CentralServer:
                         )
                         # 选择声誉最高的3个模型
                         models_to_aggregate = [
-                            all_models[i] for i in sorted_indices[:3]
+                            all_models[i] for i in sorted_indices[:2]
                         ]
 
                         # 打印每轮的所有节点声誉
@@ -147,7 +149,7 @@ class CentralServer:
 
                     else:
                         # 如果不使用声誉，那么就选择所有的模型
-                        for _ in range(5):
+                        for _ in range(2):
                             model_dict = self.local_models.get()
                             models_to_aggregate.append(model_dict)
                 finally:
@@ -160,9 +162,9 @@ class CentralServer:
                             model, data_test_device
                         )
                         individual_accuracies.append(accuracy)
-                        print(f"Accuracy of model from drone {drone_id}: {accuracy}")
+                #         print(f"Accuracy of model from drone {drone_id}: {accuracy}")
 
-                print("Individual accuracies: ", individual_accuracies)
+                # print("Individual accuracies: ", individual_accuracies)
 
                 all_individual_accuracies.append(individual_accuracies)
 
@@ -190,7 +192,7 @@ class CentralServer:
                     self.send_model_thread(ip, "aggregated_global_model")
 
             # 当有10条记录就开始动态画图
-            if self.num_aggregations == 15:
+            if self.num_aggregations == 20:
                 end_time = time.time()  # 记录结束时间
                 print(
                     f"Total time for aggregation: {end_time - start_time} seconds"
@@ -320,7 +322,7 @@ class CentralServer:
     def update_reputation(self, drone_id, new_reputation):
         self.reputation[drone_id] = new_reputation
 
-    def aggregate_models(self, models_to_aggregate, use_reputation=False):
+    def aggregate_models(self, models_to_aggregate, use_reputation):
         if use_reputation:
             aggregated_model = weighted_average_aggregation(
                 models_to_aggregate, self.reputation
@@ -390,12 +392,34 @@ class CentralServer:
             # print("发送全局模型-成功！--->" + ip)
             return json.dumps({"status": "success"})
 
-    def compute_reputation(self, performance, data_age):
-        # 根据新的定义计算声誉
+    def compute_reputation(self, drone_id, performance, data_age, performance_threshold=0.7):
         performance_contribution = sigmoid(performance)
         data_age_contribution = exponential_decay(data_age)
         reputation = performance_contribution * 0.9 + data_age_contribution * 0.1
-        return performance
+
+        # 检查性能是否低于阈值，并更新连续低性能计数
+        performance_threshold = 0.66
+        # 检查并更新连续低性能计数
+        if performance < performance_threshold:  # 你可以选择合适的阈值
+            if drone_id in self.low_performance_counts:
+                self.low_performance_counts[drone_id] += 1
+                
+            else:
+                self.low_performance_counts[drone_id] = 1
+            print("low performance node,",drone_id)
+            reputation = reputation * 0.1 
+        else:
+            penalty_factor = 1 /  (1+np.exp(self.low_performance_counts.get(drone_id, 0)))
+            
+
+
+            if drone_id in self.low_performance_counts and self.low_performance_counts[drone_id] > 0:
+                self.low_performance_counts[drone_id] -= 1
+            print("use penalty factor")
+            reputation = reputation * penalty_factor
+
+
+        return reputation
 
     def send_model_thread(self, ip, model_type="aggregated_global_model"):
         threading.Thread(target=self.send_model, args=(ip, model_type)).start()
@@ -435,8 +459,9 @@ class CentralServer:
                 self.data_age[drone_id] += 1
             else:
                 self.data_age[drone_id] = 1
-            # 更新声誉分数
-            reputation = self.compute_reputation(performance, self.data_age[drone_id])
+
+            
+            reputation = self.compute_reputation(drone_id, performance, self.data_age[drone_id],performance_threshold = 0.7)
 
             self.update_reputation(drone_id, reputation)
 

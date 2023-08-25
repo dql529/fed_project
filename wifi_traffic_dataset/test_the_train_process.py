@@ -22,8 +22,8 @@ torch.manual_seed(0)
 
 # 定义输出维度
 num_output_features = 2
-num_epochs = 15
-learning_rate = 0.01
+num_epochs = 1000
+learning_rate = 0.02
 model = Net18(num_output_features).to(device)
 num_output_features = 2
 criterion = nn.CrossEntropyLoss()
@@ -105,7 +105,14 @@ for epoch in range(num_epochs):
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
-    # Evaluate
+
+    
+    with torch.no_grad():
+        for param in model.parameters():
+            param.add_(torch.randn_like(param) * 0.5)  # 添加噪声
+
+    print("Malicious behavior: Model quality has been intentionally degraded.")
+
     accuracy, precision, recall, f1 = evaluate(data_test_device)
     accuracies.append(accuracy)
     print(f"Epoch {epoch+1}/{num_epochs}:")

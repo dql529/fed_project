@@ -29,7 +29,7 @@ num_output_features = 2
 # 对于每个节点，加载训练和测试数据
 
 
-class DroneNode:
+class MaliciousDroneNode:
     def __init__(self, drone_id):
         self.port = 5001
         self.central_server_ip = "localhost:5000"
@@ -55,7 +55,7 @@ class DroneNode:
 
         # 定义损失函数和优化器
 
-        num_epochs = 10
+        num_epochs = 15
         learning_rate = 0.01
         optimizer = torch.optim.Adam(self.local_model.parameters(), lr=learning_rate)
 
@@ -132,10 +132,16 @@ class DroneNode:
             self.local_model.train()  # Set the model to training mode
             outputs = self.local_model(self.data_device)
             loss = compute_loss(outputs, self.data_device.y)
-
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            with torch.no_grad():
+                for param in self.local_model.parameters():
+                    param.add_(torch.randn_like(param) * 0.1)  # 添加噪声
+
+            print("Malicious behavior: Model quality has been intentionally degraded.")
+
+
             # Evaluate
             accuracy, precision, recall, f1 = evaluate(self.data_test_device)
             accuracies.append(accuracy)
@@ -315,7 +321,7 @@ class DroneNode:
 if __name__ == "__main__":
     drone_id = int(sys.argv[2])
 
-    drone_node_instance = DroneNode(drone_id)
+    drone_node_instance = MaliciousDroneNode(drone_id)
     drone_node_instance.port = sys.argv[1]
 
     drone_node_instance.drone_id = drone_id
