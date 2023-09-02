@@ -20,9 +20,15 @@ from tools import plot_accuracy_vs_epoch, sigmoid, exponential_decay
 from matplotlib import pyplot as plt
 import logging
 import sys
+from web3 import Web3
+
+# 读取整个JSON文件
+with open("blockchain/build/contracts/ModelRegistry.json", "r", encoding="utf-8") as f:
+    data = json.load(f)
+abi = data["abi"]
 
 torch.manual_seed(0)
-# os.chdir("C:\\Users\\ROG\\Desktop\\UAV_Project\\wifi_traffic_dataset")
+
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
 learning_rate = 0.01
@@ -50,10 +56,48 @@ class CentralServer:
         self.drone_nodes = {}
         self.aggregation_accuracies = []
         self.num_aggregations = 0  # 记录聚合次数
-        self.data_age = {}      
+        self.data_age = {}
         self.low_performance_counts = {}
+        # import blockchain module
+        self.w3 = Web3(
+            Web3.HTTPProvider("http://localhost:7545")
+        )  # Replace with your Ethereum node address
+        self.contract_address = "0x70C7d605031f6eD2b76780a08F72D1e00Bd0e009"  # Replace with your deployed contract address
+        self.contract_abi = abi  # Replace with your contract's ABI
+
+        self.contract = self.w3.eth.contract(
+            address=self.contract_address, abi=self.contract_abi
+        )
 
         threading.Thread(target=self.check_and_aggregate_models).start()
+
+    def updateBlockchain(self, drone_id, performance, reputation):
+        drone_id_uint256 = int(drone_id)
+        performance_uint256 = int(performance * 10000)  # 假设你想保留4位小数
+        reputation_uint256 = int(reputation * 10000)  # 假设你想保留4位小数
+
+        self.contract.functions.updatePerformanceAndReputation(
+            drone_id_uint256, performance_uint256, reputation_uint256
+        ).transact({"from": self.w3.eth.accounts[0]})
+
+    def queryBlockchain(self, drone_id):
+        # Query model performance and reputation history
+        (
+            reputations,
+            performances,
+        ) = self.contract.functions.getAllReputationAndPerformance(int(drone_id)).call()
+
+        # Convert to decimal
+        performances_decimal = [p / 10000 for p in performances]
+        reputations_decimal = [r / 10000 for r in reputations]
+
+        # # Print all performances and reputations in decimal along with drone_id
+        # for i in range(len(performances_decimal)):
+        #     print(
+        #         f"Drone ID: {drone_id}, Performance: {performances_decimal[i]}, Reputation: {reputations_decimal[i]}"
+        #     )
+
+        return performances_decimal, reputations_decimal
 
     def fed_evaluate(self, model, data_test_device):
         model.eval()
@@ -102,13 +146,13 @@ class CentralServer:
         #     )
         return outputs.argmax(dim=1)
 
-    def check_and_aggregate_models(self, use_reputation=True):
+    def check_and_aggregate_models(self, use_reputation=False):
         torch.manual_seed(0)
         print("LOGGER-INFO: check_and_aggregate_models() is called")
         start_time = time.time()
         all_individual_accuracies = []
         aggregation_times = []
-        # 检查队列中是否有足够的模型进行聚合·   
+        # 检查队列中是否有足够的模型进行聚合·
         while True:
             self.new_model_event.wait()
             if self.local_models.qsize() >= 2:
@@ -192,7 +236,7 @@ class CentralServer:
                     self.send_model_thread(ip, "aggregated_global_model")
 
             # 当有10条记录就开始动态画图
-            if self.num_aggregations == 20:
+            if self.num_aggregations == 5:
                 end_time = time.time()  # 记录结束时间
                 print(
                     f"Total time for aggregation: {end_time - start_time} seconds"
@@ -215,6 +259,21 @@ class CentralServer:
                 )
 
                 print("Program is about to terminate")
+
+                for drone_id in self.drone_nodes:
+                    print(
+                        f"Debug: Current drone_id is {drone_id}, type is {type(drone_id)}"
+                    )
+                    try:
+                        int_drone_id = int(drone_id)
+                    except ValueError:
+                        print(f"Error: Cannot convert drone_id {drone_id} to integer.")
+                        continue  # Skip this iteration
+
+                    reputation, performance = self.queryBlockchain(int_drone_id)
+                    print(
+                        f"Drone ID: {int_drone_id}, Performance: {performance}, Reputation: {reputation}"
+                    )
 
                 sys.exit()  # Terminate the program
             self.new_model_event.clear()
@@ -392,7 +451,9 @@ class CentralServer:
             # print("发送全局模型-成功！--->" + ip)
             return json.dumps({"status": "success"})
 
-    def compute_reputation(self, drone_id, performance, data_age, performance_threshold=0.7):
+    def compute_reputation(
+        self, drone_id, performance, data_age, performance_threshold
+    ):
         performance_contribution = sigmoid(performance)
         data_age_contribution = exponential_decay(data_age)
         reputation = performance_contribution * 0.9 + data_age_contribution * 0.1
@@ -403,21 +464,24 @@ class CentralServer:
         if performance < performance_threshold:  # 你可以选择合适的阈值
             if drone_id in self.low_performance_counts:
                 self.low_performance_counts[drone_id] += 1
-                
+
             else:
                 self.low_performance_counts[drone_id] = 1
-            print("low performance node,",drone_id)
-            reputation = reputation * 0.1 
+            print("low performance node,", drone_id)
+            reputation = reputation * 0.1
         else:
-            penalty_factor = 1 /  (1+np.exp(self.low_performance_counts.get(drone_id, 0)))
-            
+            penalty_factor = 1 / (
+                1 + np.exp(self.low_performance_counts.get(drone_id, 0))
+            )
 
-
-            if drone_id in self.low_performance_counts and self.low_performance_counts[drone_id] > 0:
+            if (
+                drone_id in self.low_performance_counts
+                and self.low_performance_counts[drone_id] > 0
+            ):
                 self.low_performance_counts[drone_id] -= 1
             print("use penalty factor")
+            print(drone_id, " 看看有没有被惩罚 ", reputation)
             reputation = reputation * penalty_factor
-
 
         return reputation
 
@@ -460,10 +524,18 @@ class CentralServer:
             else:
                 self.data_age[drone_id] = 1
 
-            
-            reputation = self.compute_reputation(drone_id, performance, self.data_age[drone_id],performance_threshold = 0.7)
+            reputation = self.compute_reputation(
+                drone_id,
+                performance,
+                self.data_age[drone_id],
+                performance_threshold=0.7,
+            )
 
             self.update_reputation(drone_id, reputation)
+
+            # 更新区块链
+
+            self.updateBlockchain(drone_id, performance, reputation)
 
             self.local_models.put({drone_id: local_model})
 
