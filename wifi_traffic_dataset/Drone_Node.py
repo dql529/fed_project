@@ -21,7 +21,6 @@ from tools import plot_accuracy_vs_epoch
 import copy
 
 
-
 torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_output_features = 2

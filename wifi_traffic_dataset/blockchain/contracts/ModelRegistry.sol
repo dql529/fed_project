@@ -16,6 +16,16 @@ contract ModelRegistry {
         nodes[droneId] = newNodeInfo;  // 更新当前节点信息
         nodesHistory[droneId].push(newNodeInfo);  // 添加到历史记录
     }
+    
+    function updateMultiplePerformanceAndReputation(uint256[] memory droneIds, uint256[] memory _performances, uint256[] memory _reputations) public {
+        require(droneIds.length == _performances.length && droneIds.length == _reputations.length, "Input arrays must have the same length");
+
+        for (uint256 i = 0; i < droneIds.length; i++) {
+            NodeInfo memory newNodeInfo = NodeInfo(_performances[i], _reputations[i]);
+            nodes[droneIds[i]] = newNodeInfo;  // 更新当前节点信息
+            nodesHistory[droneIds[i]].push(newNodeInfo);  // 添加到历史记录
+        }
+    }
 
     // 获取最新的性能和声誉
     function getLatestReputationAndPerformance(uint256 droneId) public view returns (uint256, uint256) {

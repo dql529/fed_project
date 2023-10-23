@@ -62,8 +62,9 @@ class CentralServer:
         self.w3 = Web3(
             Web3.HTTPProvider("http://localhost:7545")
         )  # Replace with your Ethereum node address
-        self.contract_address = "0x70C7d605031f6eD2b76780a08F72D1e00Bd0e009"  # Replace with your deployed contract address
+        self.contract_address = "0x6F7159033b9674bD1619d2DF63AF1c1eC2D7E413"  # Replace with your deployed contract address
         self.contract_abi = abi  # Replace with your contract's ABI
+        self.pending_blockchain_updates = {}
 
         self.contract = self.w3.eth.contract(
             address=self.contract_address, abi=self.contract_abi
@@ -71,13 +72,18 @@ class CentralServer:
 
         threading.Thread(target=self.check_and_aggregate_models).start()
 
-    def updateBlockchain(self, drone_id, performance, reputation):
-        drone_id_uint256 = int(drone_id)
-        performance_uint256 = int(performance * 10000)  # 假设你想保留4位小数
-        reputation_uint256 = int(reputation * 10000)  # 假设你想保留4位小数
+    def updateBlockchain(self, aggregated_data):
+        drone_ids = []
+        performances = []
+        reputations = []
 
-        self.contract.functions.updatePerformanceAndReputation(
-            drone_id_uint256, performance_uint256, reputation_uint256
+        for drone_id, data in aggregated_data.items():
+            drone_ids.append(int(drone_id))
+            performances.append(int(data["performance"] * 10000))
+            reputations.append(int(data["reputation"] * 10000))
+
+        self.contract.functions.updateMultiplePerformanceAndReputation(
+            drone_ids, performances, reputations
         ).transact({"from": self.w3.eth.accounts[0]})
 
     def queryBlockchain(self, drone_id):
@@ -146,7 +152,7 @@ class CentralServer:
         #     )
         return outputs.argmax(dim=1)
 
-    def check_and_aggregate_models(self, use_reputation=False):
+    def check_and_aggregate_models(self, use_reputation=True):
         torch.manual_seed(0)
         print("LOGGER-INFO: check_and_aggregate_models() is called")
         start_time = time.time()
@@ -155,13 +161,17 @@ class CentralServer:
         # 检查队列中是否有足够的模型进行聚合·
         while True:
             self.new_model_event.wait()
-            if self.local_models.qsize() >= 2:
+            if self.local_models.qsize() >= 8:
+                # 在这里更新区块链
+                self.updateBlockchain(self.pending_blockchain_updates)
+                self.pending_blockchain_updates.clear()  # 清空待更新的列表
+
                 models_to_aggregate = []
                 self.lock.acquire()
                 try:
                     if use_reputation:
                         # 获取所有模型和它们的声誉
-                        all_models = [self.local_models.get() for _ in range(2)]
+                        all_models = [self.local_models.get() for _ in range(8)]
                         all_reputations = [
                             self.reputation[drone_id]
                             for model_dict in all_models
@@ -175,7 +185,7 @@ class CentralServer:
                         )
                         # 选择声誉最高的3个模型
                         models_to_aggregate = [
-                            all_models[i] for i in sorted_indices[:2]
+                            all_models[i] for i in sorted_indices[:8]
                         ]
 
                         # 打印每轮的所有节点声誉
@@ -193,7 +203,7 @@ class CentralServer:
 
                     else:
                         # 如果不使用声誉，那么就选择所有的模型
-                        for _ in range(2):
+                        for _ in range(8):
                             model_dict = self.local_models.get()
                             models_to_aggregate.append(model_dict)
                 finally:
@@ -235,8 +245,8 @@ class CentralServer:
                 for drone_id, ip in self.drone_nodes.items():
                     self.send_model_thread(ip, "aggregated_global_model")
 
-            # 当有10条记录就开始动态画图
-            if self.num_aggregations == 5:
+            # 当有n条记录就开始动态画图
+            if self.num_aggregations == 30:
                 end_time = time.time()  # 记录结束时间
                 print(
                     f"Total time for aggregation: {end_time - start_time} seconds"
@@ -461,7 +471,7 @@ class CentralServer:
         # 检查性能是否低于阈值，并更新连续低性能计数
         performance_threshold = 0.66
         # 检查并更新连续低性能计数
-        if performance < performance_threshold:  # 你可以选择合适的阈值
+        if performance < performance_threshold:  # 选择合适的阈值
             if drone_id in self.low_performance_counts:
                 self.low_performance_counts[drone_id] += 1
 
@@ -533,9 +543,10 @@ class CentralServer:
 
             self.update_reputation(drone_id, reputation)
 
-            # 更新区块链
-
-            self.updateBlockchain(drone_id, performance, reputation)
+            self.pending_blockchain_updates[drone_id] = {
+                "performance": performance,
+                "reputation": reputation,
+            }
 
             self.local_models.put({drone_id: local_model})
 

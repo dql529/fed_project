@@ -23,35 +23,40 @@ def plot_accuracy_vs_epoch(
 
     formatter = FuncFormatter(to_percent)
 
+    # 预定义颜色和标记列表
+    colors = ["red", "green", "blue", "purple", "orange", "cyan", "brown", "pink"]
+    markers = ["o", "s", "^", "v", "p", "*", "+", "x"]
+
     plt.figure(figsize=(12, 8))  # Set the figure size to be larger
     plt.plot(
         range(1, num_epochs + 1),
         accuracies,
         marker="o",
         linestyle="-",
-        color="b",
-        linewidth=2,  # Make the line wider
-        label="Aggregated Model Accuracy",
+        color="black",
+        linewidth=3,  # Make the line wider
+        label="Server model based on reputation aggregation ",
     )  # Plot accuracy of the aggregated model
 
     # Plot accuracy of each individual model
     for i, acc_list in enumerate(
         zip(*individual_accuracies)
     ):  # Unpack the nested lists
-        label = f"Individual Model Accuracy" if i == 0 else None
+        label = f"Local GNN model {i+1} "
         plt.plot(
             range(1, num_epochs + 1),
             acc_list,
-            marker="o",
+            marker=markers[i],  # Choose the marker based on node index
             linestyle="--",  # Use dashed line
-            color="lightgrey",  # Use a lighter color
+            color=colors[i],  # Choose the color based on node index
             linewidth=1,  # Make the line thinner
             label=label,
+            alpha=0.5,
         )
 
     plt.xlabel("Epoch", fontsize=14)  # Set the label for the x-axis
     plt.ylabel("Accuracy", fontsize=14)  # Set the label for the y-axis
-    plt.title("Accuracy vs. Epoch", fontsize=16)  # Set the title
+    plt.title("Model Aggregation", fontsize=16)  # Set the title
     plt.grid(True)  # Add grid lines
 
     plt.xticks(fontsize=12)  # Set the size of the x-axis ticks
@@ -69,12 +74,12 @@ def plot_accuracy_vs_epoch(
         f"learning rate {learning_rate}, epoch {num_epochs} ,Maximum accuracy of {100*max_accuracy:.2f}% at epoch {max_epoch}"
     )
 
-    # Annotate the maximum point
-    plt.annotate(
-        f"Max Accuracy: {100*max_accuracy:.2f}%",
-        xy=(max_epoch, max_accuracy),
-        xytext=(max_epoch, max_accuracy - 0.1),
-        arrowprops=dict(facecolor="red", shrink=0.1),
-    )
-
-    plt.savefig("your_plot.png")
+    # # Annotate the maximum point
+    # plt.annotate(
+    #     f"Max Accuracy: {100*max_accuracy:.2f}%",
+    #     xy=(max_epoch, max_accuracy),
+    #     xytext=(max_epoch, max_accuracy - 0.1),
+    #     arrowprops=dict(facecolor="red", shrink=0.1),
+    # )
+    plt.tight_layout()
+    plt.savefig("plot.eps", format="eps")
